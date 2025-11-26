@@ -413,9 +413,10 @@ impl AstroSwapAggregator {
                 }
 
                 // Try direct route
-                if let Ok(output) = Self::get_protocol_quote_internal(
+                if let Ok((output, pair_address)) = Self::get_protocol_quote_with_pair(
                     env,
                     protocol_id,
+                    &adapter,
                     token_in,
                     token_out,
                     amount_in,
@@ -425,7 +426,7 @@ impl AstroSwapAggregator {
 
                         let step = RouteStep {
                             protocol_id,
-                            pool_address: adapter.factory_address.clone(),
+                            pool_address: pair_address,
                             token_in: token_in.clone(),
                             token_out: token_out.clone(),
                             amount_in,
@@ -483,6 +484,42 @@ impl AstroSwapAggregator {
         )
     }
 
+    /// Get quote and pair address from a specific protocol
+    fn get_protocol_quote_with_pair(
+        env: &Env,
+        protocol_id: u32,
+        adapter: &ProtocolAdapter,
+        token_in: &Address,
+        token_out: &Address,
+        amount_in: i128,
+    ) -> Result<(i128, Address), AstroSwapError> {
+        if !adapter.is_active {
+            return Err(AstroSwapError::ProtocolNotFound);
+        }
+
+        // For AstroSwap (protocol 0), use our native interface
+        if protocol_id == 0 {
+            return Self::get_astroswap_quote_with_pair(
+                env,
+                &adapter.factory_address,
+                token_in,
+                token_out,
+                amount_in,
+            );
+        }
+
+        // For other protocols, use generic interface
+        // (For now, just return factory as pool address - external protocols may vary)
+        let quote = Self::get_external_quote(
+            env,
+            &adapter.factory_address,
+            token_in,
+            token_out,
+            amount_in,
+        )?;
+        Ok((quote, adapter.factory_address.clone()))
+    }
+
     /// Get quote from AstroSwap (native protocol)
     fn get_astroswap_quote(
         env: &Env,
@@ -491,6 +528,18 @@ impl AstroSwapAggregator {
         token_out: &Address,
         amount_in: i128,
     ) -> Result<i128, AstroSwapError> {
+        let (quote, _pair) = Self::get_astroswap_quote_with_pair(env, factory, token_in, token_out, amount_in)?;
+        Ok(quote)
+    }
+
+    /// Get quote and pair address from AstroSwap (native protocol)
+    fn get_astroswap_quote_with_pair(
+        env: &Env,
+        factory: &Address,
+        token_in: &Address,
+        token_out: &Address,
+        amount_in: i128,
+    ) -> Result<(i128, Address), AstroSwapError> {
         // Get pair address from factory
         let pair_address: Option<Address> = env.invoke_contract(
             factory,
@@ -513,7 +562,8 @@ impl AstroSwapAggregator {
         };
 
         // Calculate amount out using AMM formula
-        astroswap_shared::get_amount_out(amount_in, reserve_in, reserve_out, fee_bps)
+        let quote = astroswap_shared::get_amount_out(amount_in, reserve_in, reserve_out, fee_bps)?;
+        Ok((quote, pair))
     }
 
     /// Get quote from external protocol using generic interface
@@ -563,14 +613,17 @@ impl AstroSwapAggregator {
 
         // Deduct aggregator fee upfront
         if config.aggregator_fee_bps > 0 {
-            if let Some(fee_recipient) = get_fee_recipient(env) {
-                let fee = (current_amount * config.aggregator_fee_bps as i128) / BPS as i128;
-                if fee > 0 {
-                    let first_step = route.steps.get(0).unwrap();
-                    let token_client = token::Client::new(env, &first_step.token_in);
-                    token_client.transfer(user, &fee_recipient, &fee);
-                    current_amount -= fee;
-                }
+            let fee = (current_amount * config.aggregator_fee_bps as i128) / BPS as i128;
+            if fee > 0 {
+                let first_step = route.steps.get(0).unwrap();
+                let token_client = token::Client::new(env, &first_step.token_in);
+
+                // Transfer fee to recipient, or to aggregator contract if no recipient set
+                let fee_destination = get_fee_recipient(env)
+                    .unwrap_or_else(|| env.current_contract_address());
+
+                token_client.transfer(user, &fee_destination, &fee);
+                current_amount -= fee;
             }
         }
 
@@ -613,14 +666,16 @@ impl AstroSwapAggregator {
         pool: &Address,
         token_in: &Address,
         _token_out: &Address,
-        amount_in: i128,
+        _amount_in: i128,
         recipient: &Address,
     ) -> Result<i128, AstroSwapError> {
-        // For AstroSwap, use the pair's swap function
+        // For AstroSwap, use the pair's swap_from_balance function
+        // (tokens already transferred to pool in execute_route)
         if protocol_id == 0 {
             let pair_client = PairClient::new(env, pool);
             // Minimum out = 0 because we already validated the route
-            return pair_client.swap(recipient, token_in, amount_in, 0);
+            let (_amount_in, amount_out) = pair_client.swap_from_balance(recipient, token_in, 0)?;
+            return Ok(amount_out);
         }
 
         // For external protocols, use generic swap interface
@@ -632,7 +687,6 @@ impl AstroSwapAggregator {
                 [
                     recipient.to_val(),
                     token_in.to_val(),
-                    amount_in.into_val(env),
                     0i128.into_val(env), // min_out = 0, already validated
                 ],
             ),

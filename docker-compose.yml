@@ -1,0 +1,127 @@
+# =============================================================================
+# AstroSwap DEX - Complete Docker Stack
+# =============================================================================
+# Ports:
+# - Frontend: 3001 (host) -> 80 (container)
+# - Indexer API: 4001 (host) -> 3001 (container)
+# - PostgreSQL: 5434 (host) -> 5432 (container)
+# - Redis: 6381 (host) -> 6379 (container)
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # ===================
+  # Infrastructure
+  # ===================
+  postgres:
+    image: postgres:15-alpine
+    container_name: astroswap-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: astroswap
+      POSTGRES_USER: astroswap
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-astroswap_dev_password}
+    ports:
+      - '5434:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U astroswap -d astroswap']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - astroswap-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: astroswap-redis
+    restart: unless-stopped
+    ports:
+      - '6381:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - astroswap-network
+
+  # ===================
+  # Backend Services
+  # ===================
+  indexer:
+    build:
+      context: ./indexer
+      dockerfile: Dockerfile
+    container_name: astroswap-indexer
+    restart: unless-stopped
+    ports:
+      - '4001:3001'
+    environment:
+      NODE_ENV: production
+      # Stellar
+      STELLAR_NETWORK: ${STELLAR_NETWORK:-testnet}
+      STELLAR_RPC_URL: ${STELLAR_RPC_URL:-https://soroban-testnet.stellar.org}
+      STELLAR_HORIZON_URL: ${STELLAR_HORIZON_URL:-https://horizon-testnet.stellar.org}
+      # Contracts
+      FACTORY_CONTRACT_ID: ${FACTORY_CONTRACT_ID}
+      ROUTER_CONTRACT_ID: ${ROUTER_CONTRACT_ID}
+      STAKING_CONTRACT_ID: ${STAKING_CONTRACT_ID}
+      # Database
+      DATABASE_URL: postgresql://astroswap:${DB_PASSWORD:-astroswap_dev_password}@postgres:5432/astroswap?schema=public
+      REDIS_URL: redis://redis:6379
+      # API
+      API_PORT: 3001
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      # Listener
+      POLLING_INTERVAL: ${POLLING_INTERVAL:-5000}
+      BATCH_SIZE: ${BATCH_SIZE:-100}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O-', 'http://localhost:3001/api/v1/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - astroswap-network
+
+  # ===================
+  # Frontend
+  # ===================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_STELLAR_NETWORK: ${STELLAR_NETWORK:-testnet}
+        VITE_FACTORY_CONTRACT_ID: ${FACTORY_CONTRACT_ID}
+        VITE_ROUTER_CONTRACT_ID: ${ROUTER_CONTRACT_ID}
+        VITE_STAKING_CONTRACT_ID: ${STAKING_CONTRACT_ID}
+        VITE_INDEXER_API_URL: http://indexer:3001
+    container_name: astroswap-frontend
+    restart: unless-stopped
+    ports:
+      - '3001:80'
+    depends_on:
+      indexer:
+        condition: service_healthy
+    networks:
+      - astroswap-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  astroswap-network:
+    driver: bridge

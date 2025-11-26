@@ -173,12 +173,9 @@ impl AstroSwapBridge {
         let staking = get_staking(&env);
         let pool_id = Self::create_staking_pool(&env, &staking, &pair_address)?;
 
-        // Calculate initial price
-        let initial_price = if token == token_0 {
-            (quote_amount * 1_000_000) / token_amount // Price in quote per token
-        } else {
-            (token_amount * 1_000_000) / quote_amount
-        };
+        // Calculate initial price (always quote per token, regardless of token ordering)
+        // Price with 7 decimals: (quote / token) * 10^7
+        let initial_price = (quote_amount * 10_000_000) / token_amount;
 
         // Step 6: Store graduation info
         let graduation_info = GraduatedToken {
@@ -342,15 +339,21 @@ impl AstroSwapBridge {
     ) -> Result<u32, AstroSwapError> {
         // Call staking contract to create a new pool
         // The pool will use LP tokens as the stake token
+        let admin = get_admin(env);
+        let current_time = env.ledger().timestamp();
+        let end_time = current_time + DEFAULT_STAKING_DURATION;
+
         let pool_id: u32 = env.invoke_contract(
             staking,
             &Symbol::new(env, "create_pool"),
             Vec::from_array(
                 env,
                 [
+                    admin.to_val(),
                     lp_token.to_val(),
                     0i128.into_val(env), // reward_per_second - to be set by admin
-                    DEFAULT_STAKING_DURATION.into_val(env),
+                    current_time.into_val(env), // start_time
+                    end_time.into_val(env), // end_time
                 ],
             ),
         );

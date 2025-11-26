@@ -423,8 +423,8 @@ fn test_initial_price_calculation() {
         .graduate_token(&launchpad, &token_address, &token_amount, &xlm_amount, &metadata);
 
     // Initial price should be XLM / Token ratio
-    // Price = (xlm_amount * 1M) / token_amount
-    let expected_price = (xlm_amount * 1_000_000) / token_amount;
+    // Price = (xlm_amount / token_amount) * 10^7 (for 7 decimal precision)
+    let expected_price = (xlm_amount * 10_000_000) / token_amount;
 
     assert_eq!(graduation.initial_price, expected_price);
 
