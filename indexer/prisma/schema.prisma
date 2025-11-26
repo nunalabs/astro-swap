@@ -1,0 +1,224 @@
+// AstroSwap DEX Indexer Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Pair registry - all trading pairs created by the factory
+model Pair {
+  id              String   @id @default(cuid())
+  address         String   @unique // Pair contract address
+  token0          String   // Token 0 address
+  token1          String   // Token 1 address
+  token0Symbol    String?
+  token1Symbol    String?
+  token0Decimals  Int      @default(7)
+  token1Decimals  Int      @default(7)
+  reserve0        String   @default("0") // BigInt as string
+  reserve1        String   @default("0") // BigInt as string
+  totalSupply     String   @default("0") // LP token total supply
+
+  // Fee configuration
+  lpFee           Int      @default(25) // 0.25% = 25 basis points
+  protocolFee     Int      @default(5)  // 0.05% = 5 basis points
+
+  // Metadata
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lastSyncBlock   BigInt   @default(0)
+
+  // Relations
+  swaps           Swap[]
+  liquidityEvents LiquidityEvent[]
+  positions       Position[]
+  priceHistory    PriceHistory[]
+
+  @@index([token0, token1])
+  @@index([createdAt])
+  @@map("pairs")
+}
+
+// Swap events - every token exchange
+model Swap {
+  id          String   @id @default(cuid())
+  pairId      String
+  pair        Pair     @relation(fields: [pairId], references: [id], onDelete: Cascade)
+
+  // Transaction details
+  txHash      String   @unique
+  sender      String   // User who initiated the swap
+  recipient   String   // Recipient of output tokens
+
+  // Swap amounts
+  amount0In   String   @default("0")
+  amount1In   String   @default("0")
+  amount0Out  String   @default("0")
+  amount1Out  String   @default("0")
+
+  // Calculated fields
+  amountInUSD  Decimal? @db.Decimal(20, 8)
+  amountOutUSD Decimal? @db.Decimal(20, 8)
+
+  // Timestamp
+  timestamp   DateTime
+  blockNumber BigInt
+
+  @@index([pairId, timestamp])
+  @@index([sender, timestamp])
+  @@index([blockNumber])
+  @@map("swaps")
+}
+
+// Liquidity events - deposits and withdrawals
+model LiquidityEvent {
+  id          String   @id @default(cuid())
+  pairId      String
+  pair        Pair     @relation(fields: [pairId], references: [id], onDelete: Cascade)
+
+  // Transaction details
+  txHash      String   @unique
+  sender      String   // User address
+
+  // Event type
+  type        LiquidityEventType
+
+  // Amounts
+  amount0     String   // Token0 amount
+  amount1     String   // Token1 amount
+  liquidity   String   // LP tokens minted/burned
+
+  // USD values
+  valueUSD    Decimal? @db.Decimal(20, 8)
+
+  // Timestamp
+  timestamp   DateTime
+  blockNumber BigInt
+
+  @@index([pairId, timestamp])
+  @@index([sender, timestamp])
+  @@index([type, timestamp])
+  @@index([blockNumber])
+  @@map("liquidity_events")
+}
+
+enum LiquidityEventType {
+  DEPOSIT
+  WITHDRAW
+}
+
+// User positions - current LP holdings
+model Position {
+  id            String   @id @default(cuid())
+  user          String   // User address
+  pairId        String
+  pair          Pair     @relation(fields: [pairId], references: [id], onDelete: Cascade)
+
+  // Balances
+  lpBalance     String   @default("0") // LP tokens held
+  stakedBalance String   @default("0") // LP tokens staked
+
+  // Calculated values
+  token0Amount  String   @default("0")
+  token1Amount  String   @default("0")
+  valueUSD      Decimal? @db.Decimal(20, 8)
+
+  // Tracking
+  firstDepositAt DateTime?
+  lastUpdateAt   DateTime @updatedAt
+
+  @@unique([user, pairId])
+  @@index([user])
+  @@index([pairId])
+  @@map("positions")
+}
+
+// Price history - time series data for charts
+model PriceHistory {
+  id          String   @id @default(cuid())
+  pairId      String
+  pair        Pair     @relation(fields: [pairId], references: [id], onDelete: Cascade)
+
+  // Prices (token1/token0)
+  price0      Decimal  @db.Decimal(30, 18)
+  price1      Decimal  @db.Decimal(30, 18)
+
+  // Reserves snapshot
+  reserve0    String
+  reserve1    String
+
+  // Volume in this period
+  volume0     String   @default("0")
+  volume1     String   @default("0")
+  volumeUSD   Decimal? @db.Decimal(20, 8)
+
+  // TVL at this point
+  tvlUSD      Decimal? @db.Decimal(20, 8)
+
+  // Time period
+  timestamp   DateTime
+  interval    PriceInterval
+
+  @@unique([pairId, timestamp, interval])
+  @@index([pairId, interval, timestamp])
+  @@index([timestamp])
+  @@map("price_history")
+}
+
+enum PriceInterval {
+  MINUTE_1
+  MINUTE_5
+  MINUTE_15
+  HOUR_1
+  HOUR_4
+  DAY_1
+}
+
+// Global protocol statistics
+model ProtocolStats {
+  id              String   @id @default(cuid())
+
+  // Volume
+  totalVolumeUSD  Decimal  @default(0) @db.Decimal(30, 8)
+  volume24hUSD    Decimal  @default(0) @db.Decimal(30, 8)
+
+  // TVL
+  totalTVLUSD     Decimal  @default(0) @db.Decimal(30, 8)
+
+  // Fees
+  totalFeesUSD    Decimal  @default(0) @db.Decimal(30, 8)
+  fees24hUSD      Decimal  @default(0) @db.Decimal(30, 8)
+
+  // Counts
+  totalPairs      Int      @default(0)
+  totalUsers      Int      @default(0)
+  totalSwaps      Int      @default(0)
+
+  // Tracking
+  lastUpdateBlock BigInt   @default(0)
+  updatedAt       DateTime @updatedAt
+
+  @@map("protocol_stats")
+}
+
+// Sync status - track indexer progress
+model SyncStatus {
+  id              String   @id @default(cuid())
+  contractAddress String   @unique
+  contractType    String   // "factory", "pair", "router", "staking"
+
+  lastBlock       BigInt   @default(0)
+  lastTxHash      String?
+  lastEventTime   DateTime?
+
+  isSyncing       Boolean  @default(false)
+  syncError       String?
+
+  updatedAt       DateTime @updatedAt
+
+  @@map("sync_status")
+}

@@ -1,0 +1,51 @@
+[package]
+name = "astroswap-stress-tests"
+version = "0.1.0"
+authors = ["AstroSwap Team"]
+edition = "2021"
+license = "GPL-3.0"
+publish = false
+
+[dependencies]
+soroban-sdk = { version = "22.0.0", features = ["testutils"] }
+soroban-token-sdk = { version = "22.0.0" }
+
+# Contract dependencies
+astroswap_factory = { package = "astroswap-factory", path = "../../contracts/factory" }
+astroswap_pair = { package = "astroswap-pair", path = "../../contracts/pair" }
+astroswap_router = { package = "astroswap-router", path = "../../contracts/router" }
+astroswap_staking = { package = "astroswap-staking", path = "../../contracts/staking" }
+astroswap_aggregator = { package = "astroswap-aggregator", path = "../../contracts/aggregator" }
+astroswap_shared = { package = "astroswap-shared", path = "../../contracts/shared" }
+
+# Async runtime
+tokio = { version = "1.41", features = ["full"] }
+
+# Metrics and reporting
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Statistics
+statistical = "1.0"
+
+# CLI and logging
+clap = { version = "4.5", features = ["derive"] }
+env_logger = "0.11"
+log = "0.4"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Random number generation
+rand = "0.8"
+
+[lib]
+path = "src/lib.rs"
+doctest = false
+
+[[bin]]
+name = "stress-runner"
+path = "src/bin/stress_runner.rs"
+
+[dev-dependencies]
+criterion = "0.5"

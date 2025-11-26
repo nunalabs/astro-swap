@@ -1,0 +1,42 @@
+[workspace]
+resolver = "2"
+members = [
+    "contracts/factory",
+    "contracts/pair",
+    "contracts/router",
+    "contracts/staking",
+    "contracts/aggregator",
+    "contracts/bridge",
+    "contracts/shared",
+    "contracts/oracle",
+    "contracts/tests",
+    "packages/math",
+    "packages/curve",
+    "tests/e2e",
+    "tests/stress",
+]
+
+[workspace.package]
+version = "0.1.0"
+authors = ["AstroSwap Team"]
+edition = "2021"
+license = "GPL-3.0"
+repository = "https://github.com/astro-shiba/astroswap"
+
+[workspace.dependencies]
+soroban-sdk = "22.0.0"
+soroban-token-sdk = "22.0.0"
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
+
+[profile.release-with-logs]
+inherits = "release"
+debug-assertions = true

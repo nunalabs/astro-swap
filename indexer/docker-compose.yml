@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:14-alpine
+    container_name: astroswap-db
+    environment:
+      POSTGRES_DB: astroswap_indexer
+      POSTGRES_USER: astroswap
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    ports:
+      - "${DB_PORT:-5434}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U astroswap"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Indexer Service
+  indexer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: astroswap-indexer
+    ports:
+      - "${API_PORT:-4001}:3001"
+    environment:
+      # Stellar
+      STELLAR_NETWORK: ${STELLAR_NETWORK:-testnet}
+      STELLAR_RPC_URL: ${STELLAR_RPC_URL:-https://soroban-testnet.stellar.org}
+      STELLAR_HORIZON_URL: ${STELLAR_HORIZON_URL:-https://horizon-testnet.stellar.org}
+
+      # Contracts
+      FACTORY_CONTRACT_ID: ${FACTORY_CONTRACT_ID}
+      ROUTER_CONTRACT_ID: ${ROUTER_CONTRACT_ID}
+      STAKING_CONTRACT_ID: ${STAKING_CONTRACT_ID}
+
+      # Database
+      DATABASE_URL: postgresql://astroswap:${DB_PASSWORD:-changeme}@db:5432/astroswap_indexer?schema=public
+
+      # API
+      API_PORT: 3001
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+
+      # Listener
+      POLLING_INTERVAL: ${POLLING_INTERVAL:-5000}
+      BATCH_SIZE: ${BATCH_SIZE:-100}
+      MAX_RETRIES: ${MAX_RETRIES:-3}
+      RETRY_DELAY: ${RETRY_DELAY:-1000}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_PRETTY: ${LOG_PRETTY:-false}
+      NODE_ENV: ${NODE_ENV:-production}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/v1/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Redis (optional, for future caching)
+  redis:
+    image: redis:7-alpine
+    container_name: astroswap-redis
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    profiles:
+      - cache
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  default:
+    name: astroswap-network

@@ -1,0 +1,60 @@
+{
+  "name": "@astroswap/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for AstroSwap DEX on Stellar/Soroban",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage",
+    "prepublishOnly": "pnpm build"
+  },
+  "keywords": [
+    "stellar",
+    "soroban",
+    "dex",
+    "amm",
+    "swap",
+    "liquidity",
+    "defi"
+  ],
+  "author": "AstroSwap Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/astroswap/astroswap-sdk"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "^12.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@vitest/coverage-v8": "^1.0.4",
+    "eslint": "^8.55.0",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3",
+    "vitest": "^1.0.4"
+  },
+  "peerDependencies": {
+    "@stellar/stellar-sdk": ">=12.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

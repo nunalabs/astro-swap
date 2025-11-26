@@ -1,0 +1,22 @@
+# Soroban WASM compilation configuration
+[target.wasm32-unknown-unknown]
+rustflags = [
+    "-C", "target-feature=-reference-types,-multivalue"
+]
+
+# Note: Do NOT set default build target here as it breaks tests
+# Build WASM with: cargo build --release --target wasm32-unknown-unknown
+
+[profile.release-with-logs]
+inherits = "release"
+debug-assertions = true
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true

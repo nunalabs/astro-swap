@@ -1,0 +1,27 @@
+[package]
+name = "astroswap-e2e-tests"
+version = "0.1.0"
+authors = ["AstroSwap Team"]
+edition = "2021"
+license = "GPL-3.0"
+publish = false
+
+[dependencies]
+soroban-sdk = { version = "22.0.0", features = ["testutils"] }
+soroban-token-sdk = { version = "22.0.0" }
+
+# Contract dependencies
+astroswap_factory = { package = "astroswap-factory", path = "../../contracts/factory" }
+astroswap_pair = { package = "astroswap-pair", path = "../../contracts/pair" }
+astroswap_router = { package = "astroswap-router", path = "../../contracts/router" }
+astroswap_staking = { package = "astroswap-staking", path = "../../contracts/staking" }
+astroswap_bridge = { package = "astroswap-bridge", path = "../../contracts/bridge" }
+astroswap_shared = { package = "astroswap-shared", path = "../../contracts/shared" }
+
+[lib]
+path = "src/lib.rs"
+doctest = false
+
+[[test]]
+name = "graduation_flow"
+path = "tests/graduation_flow.rs"

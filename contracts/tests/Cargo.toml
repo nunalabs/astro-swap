@@ -1,0 +1,25 @@
+[package]
+name = "astroswap-integration-tests"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["lib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+astroswap-shared = { path = "../shared" }
+astroswap-factory = { path = "../factory" }
+astroswap-pair = { path = "../pair" }
+astroswap-router = { path = "../router" }
+astroswap-staking = { path = "../staking" }
+astroswap-aggregator = { path = "../aggregator" }
+astroswap-bridge = { path = "../bridge" }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+soroban-token-sdk = { workspace = true }

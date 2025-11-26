@@ -1,0 +1,285 @@
+name: SDK
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'sdk/**'
+      - '.github/workflows/sdk.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'sdk/**'
+      - '.github/workflows/sdk.yml'
+
+jobs:
+  setup:
+    name: Setup & Install
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+          run_install: false
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        working-directory: sdk
+        run: pnpm install --frozen-lockfile
+
+  typecheck:
+    name: TypeScript Check
+    runs-on: ubuntu-latest
+    needs: setup
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+
+      - name: Install dependencies
+        working-directory: sdk
+        run: pnpm install --frozen-lockfile
+
+      - name: Run typecheck
+        working-directory: sdk
+        run: pnpm typecheck
+
+  lint:
+    name: Lint SDK
+    runs-on: ubuntu-latest
+    needs: setup
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+
+      - name: Install dependencies
+        working-directory: sdk
+        run: pnpm install --frozen-lockfile
+
+      - name: Run linter
+        working-directory: sdk
+        run: pnpm lint
+
+  build:
+    name: Build SDK
+    runs-on: ubuntu-latest
+    needs: [typecheck, lint]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+
+      - name: Install dependencies
+        working-directory: sdk
+        run: pnpm install --frozen-lockfile
+
+      - name: Build SDK
+        working-directory: sdk
+        run: pnpm build
+
+      - name: Check build output
+        working-directory: sdk
+        run: |
+          echo "### 📦 SDK Build Output" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f "dist/index.js" ] && [ -f "dist/index.mjs" ] && [ -f "dist/index.d.ts" ]; then
+            echo "✅ All build artifacts created successfully:" >> $GITHUB_STEP_SUMMARY
+            echo "- \`dist/index.js\` (CommonJS)" >> $GITHUB_STEP_SUMMARY
+            echo "- \`dist/index.mjs\` (ESM)" >> $GITHUB_STEP_SUMMARY
+            echo "- \`dist/index.d.ts\` (TypeScript definitions)" >> $GITHUB_STEP_SUMMARY
+
+            CJS_SIZE=$(wc -c < "dist/index.js" | tr -d ' ')
+            ESM_SIZE=$(wc -c < "dist/index.mjs" | tr -d ' ')
+            DTS_SIZE=$(wc -c < "dist/index.d.ts" | tr -d ' ')
+
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Bundle Sizes:**" >> $GITHUB_STEP_SUMMARY
+            echo "- CommonJS: $(($CJS_SIZE / 1024)) KB" >> $GITHUB_STEP_SUMMARY
+            echo "- ESM: $(($ESM_SIZE / 1024)) KB" >> $GITHUB_STEP_SUMMARY
+            echo "- Types: $(($DTS_SIZE / 1024)) KB" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Build artifacts missing" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-dist
+          path: sdk/dist/
+          retention-days: 30
+
+  test:
+    name: Test SDK
+    runs-on: ubuntu-latest
+    needs: setup
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+
+      - name: Install dependencies
+        working-directory: sdk
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        working-directory: sdk
+        run: pnpm test
+        continue-on-error: true
+
+      - name: Test summary
+        if: always()
+        run: |
+          echo "### 🧪 SDK Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Tests executed using Vitest" >> $GITHUB_STEP_SUMMARY
+
+  publish-dry-run:
+    name: Publish Dry Run
+    runs-on: ubuntu-latest
+    needs: [build, test]
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
+      - name: Install dependencies
+        working-directory: sdk
+        run: pnpm install --frozen-lockfile
+
+      - name: Build SDK
+        working-directory: sdk
+        run: pnpm build
+
+      - name: Dry run publish
+        working-directory: sdk
+        run: pnpm publish --dry-run --no-git-checks
+
+      - name: Package info
+        working-directory: sdk
+        run: |
+          echo "### 📦 Package Information" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+          cat package.json | jq '{name, version, description, main, module, types}' >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

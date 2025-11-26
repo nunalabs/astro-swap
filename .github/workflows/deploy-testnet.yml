@@ -1,0 +1,369 @@
+name: Deploy to Testnet
+
+on:
+  workflow_dispatch:
+    inputs:
+      contracts:
+        description: 'Contracts to deploy (comma-separated: factory,pair,router,staking,aggregator,bridge or "all")'
+        required: true
+        default: 'all'
+        type: string
+      network:
+        description: 'Network to deploy to'
+        required: true
+        default: 'testnet'
+        type: choice
+        options:
+          - testnet
+          - futurenet
+
+env:
+  CARGO_TERM_COLOR: always
+  STELLAR_NETWORK: ${{ inputs.network }}
+
+jobs:
+  validate:
+    name: Pre-deployment Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-deploy-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run tests
+        run: cargo test --workspace --verbose
+
+      - name: Run linter
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Validation summary
+        run: |
+          echo "### ✅ Pre-deployment Validation Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Tests: Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- Lints: Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- Network: ${{ inputs.network }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Contracts: ${{ inputs.contracts }}" >> $GITHUB_STEP_SUMMARY
+
+  build:
+    name: Build & Optimize Contracts
+    runs-on: ubuntu-latest
+    needs: validate
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Determine contracts to build
+        id: contracts
+        run: |
+          if [ "${{ inputs.contracts }}" = "all" ]; then
+            CONTRACTS="factory pair router staking aggregator bridge"
+          else
+            CONTRACTS="${{ inputs.contracts }}"
+          fi
+          echo "list=${CONTRACTS}" >> $GITHUB_OUTPUT
+          echo "Building contracts: ${CONTRACTS}"
+
+      - name: Build contracts
+        run: |
+          for contract in ${{ steps.contracts.outputs.list }}; do
+            echo "Building $contract..."
+            cd contracts/$contract
+            cargo build --target wasm32-unknown-unknown --release --verbose
+            cd ../..
+          done
+
+      - name: Install Stellar CLI
+        run: |
+          cargo install --locked stellar-cli --features opt
+          stellar version
+
+      - name: Optimize contracts
+        run: |
+          for contract in ${{ steps.contracts.outputs.list }}; do
+            WASM_PATH="target/wasm32-unknown-unknown/release/astroswap_${contract}.wasm"
+            OPTIMIZED_PATH="target/wasm32-unknown-unknown/release/astroswap_${contract}.optimized.wasm"
+
+            if [ -f "$WASM_PATH" ]; then
+              echo "Optimizing $contract..."
+              stellar contract optimize --wasm "$WASM_PATH" --wasm-out "$OPTIMIZED_PATH"
+
+              ORIGINAL_SIZE=$(wc -c < "$WASM_PATH")
+              OPTIMIZED_SIZE=$(wc -c < "$OPTIMIZED_PATH")
+              REDUCTION=$((100 - (OPTIMIZED_SIZE * 100 / ORIGINAL_SIZE)))
+
+              echo "✅ $contract optimized: ${ORIGINAL_SIZE} → ${OPTIMIZED_SIZE} bytes (-${REDUCTION}%)"
+            fi
+          done
+
+      - name: Verify contract sizes
+        run: |
+          echo "### 📦 Optimized Contract Sizes" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Contract | Original | Optimized | Reduction |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|----------|-----------|-----------|" >> $GITHUB_STEP_SUMMARY
+
+          for contract in ${{ steps.contracts.outputs.list }}; do
+            WASM_PATH="target/wasm32-unknown-unknown/release/astroswap_${contract}.wasm"
+            OPTIMIZED_PATH="target/wasm32-unknown-unknown/release/astroswap_${contract}.optimized.wasm"
+
+            if [ -f "$OPTIMIZED_PATH" ]; then
+              ORIGINAL_SIZE=$(wc -c < "$WASM_PATH")
+              OPTIMIZED_SIZE=$(wc -c < "$OPTIMIZED_PATH")
+              ORIGINAL_KB=$((ORIGINAL_SIZE / 1024))
+              OPTIMIZED_KB=$((OPTIMIZED_SIZE / 1024))
+              REDUCTION=$((100 - (OPTIMIZED_SIZE * 100 / ORIGINAL_SIZE)))
+
+              if [ $OPTIMIZED_SIZE -gt 262144 ]; then
+                STATUS="❌ ${OPTIMIZED_KB} KB"
+                echo "ERROR: $contract exceeds 256KB after optimization!"
+                exit 1
+              else
+                STATUS="✅ ${OPTIMIZED_KB} KB"
+              fi
+
+              echo "| $contract | ${ORIGINAL_KB} KB | $STATUS | -${REDUCTION}% |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+      - name: Upload optimized contracts
+        uses: actions/upload-artifact@v4
+        with:
+          name: optimized-contracts
+          path: target/wasm32-unknown-unknown/release/*.optimized.wasm
+          retention-days: 30
+
+  deploy:
+    name: Deploy to ${{ inputs.network }}
+    runs-on: ubuntu-latest
+    needs: build
+    environment: ${{ inputs.network }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download optimized contracts
+        uses: actions/download-artifact@v4
+        with:
+          name: optimized-contracts
+          path: target/wasm32-unknown-unknown/release/
+
+      - name: Install Stellar CLI
+        run: |
+          cargo install --locked stellar-cli --features opt
+          stellar version
+
+      - name: Configure Stellar network
+        run: |
+          if [ "${{ inputs.network }}" = "testnet" ]; then
+            stellar network add testnet \
+              --rpc-url https://soroban-testnet.stellar.org:443 \
+              --network-passphrase "Test SDF Network ; September 2015"
+          else
+            stellar network add futurenet \
+              --rpc-url https://rpc-futurenet.stellar.org:443 \
+              --network-passphrase "Test SDF Future Network ; October 2022"
+          fi
+
+      - name: Setup deployment identity
+        env:
+          DEPLOYER_SECRET_KEY: ${{ secrets.DEPLOYER_SECRET_KEY }}
+        run: |
+          if [ -z "$DEPLOYER_SECRET_KEY" ]; then
+            echo "❌ DEPLOYER_SECRET_KEY secret not configured"
+            echo "Please add the secret in repository settings:"
+            echo "Settings → Secrets and variables → Actions → New repository secret"
+            exit 1
+          fi
+
+          stellar keys add deployer --secret-key "$DEPLOYER_SECRET_KEY"
+          DEPLOYER_ADDRESS=$(stellar keys address deployer)
+          echo "Deployer address: $DEPLOYER_ADDRESS"
+
+      - name: Check deployer balance
+        run: |
+          DEPLOYER_ADDRESS=$(stellar keys address deployer)
+          BALANCE=$(stellar account balance deployer --network ${{ inputs.network }} 2>/dev/null || echo "0")
+          echo "Deployer balance: $BALANCE XLM"
+
+          if [ "$BALANCE" = "0" ]; then
+            echo "⚠️ Warning: Deployer account has no balance"
+            echo "Fund the account before deploying: $DEPLOYER_ADDRESS"
+          fi
+
+      - name: Determine contracts to deploy
+        id: contracts
+        run: |
+          if [ "${{ inputs.contracts }}" = "all" ]; then
+            CONTRACTS="factory pair router staking aggregator bridge"
+          else
+            CONTRACTS="${{ inputs.contracts }}"
+          fi
+          echo "list=${CONTRACTS}" >> $GITHUB_OUTPUT
+
+      - name: Deploy contracts
+        id: deploy
+        run: |
+          echo "### 🚀 Deployment Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Network**: ${{ inputs.network }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployer**: $(stellar keys address deployer)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Contract | Contract ID | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          mkdir -p deployment-artifacts
+
+          for contract in ${{ steps.contracts.outputs.list }}; do
+            WASM_PATH="target/wasm32-unknown-unknown/release/astroswap_${contract}.optimized.wasm"
+
+            if [ ! -f "$WASM_PATH" ]; then
+              echo "❌ Contract file not found: $WASM_PATH"
+              exit 1
+            fi
+
+            echo "Deploying $contract..."
+
+            # Deploy contract
+            CONTRACT_ID=$(stellar contract deploy \
+              --wasm "$WASM_PATH" \
+              --source deployer \
+              --network ${{ inputs.network }} 2>&1 | tail -n1)
+
+            if [ -z "$CONTRACT_ID" ]; then
+              echo "| $contract | - | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+              echo "❌ Failed to deploy $contract"
+              exit 1
+            fi
+
+            echo "| $contract | \`$CONTRACT_ID\` | ✅ Deployed |" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Deployed $contract: $CONTRACT_ID"
+
+            # Save contract ID
+            echo "$CONTRACT_ID" > "deployment-artifacts/${contract}_contract_id.txt"
+            echo "${contract}_contract_id=$CONTRACT_ID" >> $GITHUB_OUTPUT
+          done
+
+      - name: Generate deployment manifest
+        run: |
+          cat > deployment-artifacts/deployment.json <<EOF
+          {
+            "network": "${{ inputs.network }}",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "deployer": "$(stellar keys address deployer)",
+            "contracts": {
+          $(for contract in ${{ steps.contracts.outputs.list }}; do
+            CONTRACT_ID=$(cat deployment-artifacts/${contract}_contract_id.txt)
+            echo "      \"$contract\": \"$CONTRACT_ID\","
+          done | sed '$ s/,$//')
+            }
+          }
+          EOF
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 Deployment Manifest" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+          cat deployment-artifacts/deployment.json >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload deployment artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-manifest-${{ inputs.network }}-${{ github.run_number }}
+          path: deployment-artifacts/
+          retention-days: 90
+
+      - name: Save deployment to environment
+        run: |
+          for contract in ${{ steps.contracts.outputs.list }}; do
+            CONTRACT_ID=$(cat deployment-artifacts/${contract}_contract_id.txt)
+            VAR_NAME=$(echo "$contract" | tr '[:lower:]' '[:upper:]')_CONTRACT_ID
+
+            echo "$VAR_NAME=$CONTRACT_ID" >> deployment-artifacts/env.txt
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔧 Environment Variables" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          cat deployment-artifacts/env.txt >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  verify:
+    name: Verify Deployment
+    runs-on: ubuntu-latest
+    needs: deploy
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Stellar CLI
+        run: |
+          cargo install --locked stellar-cli --features opt
+          stellar version
+
+      - name: Download deployment artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-manifest-${{ inputs.network }}-${{ github.run_number }}
+          path: deployment-artifacts/
+
+      - name: Verify contracts
+        run: |
+          echo "### ✅ Verification Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          CONTRACTS=$(cat deployment-artifacts/deployment.json | jq -r '.contracts | keys[]')
+
+          for contract in $CONTRACTS; do
+            CONTRACT_ID=$(cat deployment-artifacts/${contract}_contract_id.txt)
+
+            echo "Verifying $contract ($CONTRACT_ID)..."
+
+            # Try to get contract info
+            stellar contract inspect --id "$CONTRACT_ID" --network ${{ inputs.network }} > /dev/null 2>&1
+
+            if [ $? -eq 0 ]; then
+              echo "- ✅ $contract verified successfully" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- ❌ $contract verification failed" >> $GITHUB_STEP_SUMMARY
+              exit 1
+            fi
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**All contracts deployed and verified successfully!**" >> $GITHUB_STEP_SUMMARY
