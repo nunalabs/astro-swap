@@ -1,8 +1,10 @@
 //! LP Token implementation (SEP-41 compatible)
 //! This module implements the token interface for LP (Liquidity Provider) tokens
+//!
+//! Using modern #[contractevent] macro for type-safe event emission
 
 use astroswap_shared::AstroSwapError;
-use soroban_sdk::{Address, Env, String, Symbol};
+use soroban_sdk::{contractevent, Address, Env, String};
 
 use crate::storage::{
     extend_balance_ttl, get_allowance, get_balance, get_total_supply, set_allowance, set_balance,
@@ -17,6 +19,44 @@ const LP_TOKEN_SYMBOL: &str = "ASTRO-LP";
 
 /// Decimals (same as most tokens)
 const DECIMALS: u32 = 7;
+
+// ==================== Event Structs ====================
+
+/// Transfer event
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Transfer {
+    pub from: Address,
+    pub to: Address,
+    pub amount: i128,
+}
+
+/// Approval event
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Approval {
+    pub owner: Address,
+    pub spender: Address,
+    pub amount: i128,
+}
+
+/// Mint event
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Mint {
+    pub to: Address,
+    pub amount: i128,
+}
+
+/// Burn event
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Burn {
+    pub from: Address,
+    pub amount: i128,
+}
+
+// ==================== Token Metadata ====================
 
 /// Get the token name
 pub fn name(_env: &Env) -> String {
@@ -48,6 +88,8 @@ pub fn allowance(env: &Env, owner: &Address, spender: &Address) -> i128 {
     get_allowance(env, owner, spender)
 }
 
+// ==================== Token Operations ====================
+
 /// Transfer tokens from caller to recipient
 pub fn transfer(
     env: &Env,
@@ -77,10 +119,12 @@ pub fn transfer(
     extend_balance_ttl(env, to);
 
     // Emit transfer event
-    env.events().publish(
-        (Symbol::new(env, "transfer"), from.clone()),
-        (to.clone(), amount),
-    );
+    Transfer {
+        from: from.clone(),
+        to: to.clone(),
+        amount,
+    }
+    .publish(env);
 
     Ok(())
 }
@@ -124,10 +168,12 @@ pub fn transfer_from(
     extend_balance_ttl(env, to);
 
     // Emit transfer event
-    env.events().publish(
-        (Symbol::new(env, "transfer"), from.clone()),
-        (to.clone(), amount),
-    );
+    Transfer {
+        from: from.clone(),
+        to: to.clone(),
+        amount,
+    }
+    .publish(env);
 
     Ok(())
 }
@@ -148,10 +194,12 @@ pub fn approve(
     set_allowance(env, owner, spender, amount);
 
     // Emit approval event
-    env.events().publish(
-        (Symbol::new(env, "approve"), owner.clone()),
-        (spender.clone(), amount),
-    );
+    Approval {
+        owner: owner.clone(),
+        spender: spender.clone(),
+        amount,
+    }
+    .publish(env);
 
     Ok(())
 }
@@ -171,8 +219,11 @@ pub fn mint(env: &Env, to: &Address, amount: i128) -> Result<(), AstroSwapError>
     extend_balance_ttl(env, to);
 
     // Emit mint event
-    env.events()
-        .publish((Symbol::new(env, "mint"),), (to.clone(), amount));
+    Mint {
+        to: to.clone(),
+        amount,
+    }
+    .publish(env);
 
     Ok(())
 }
@@ -198,8 +249,11 @@ pub fn burn(env: &Env, from: &Address, amount: i128) -> Result<(), AstroSwapErro
     extend_balance_ttl(env, from);
 
     // Emit burn event
-    env.events()
-        .publish((Symbol::new(env, "burn"),), (from.clone(), amount));
+    Burn {
+        from: from.clone(),
+        amount,
+    }
+    .publish(env);
 
     Ok(())
 }

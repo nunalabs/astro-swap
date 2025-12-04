@@ -4,7 +4,12 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
-  // Math utilities
+  // Safe math utilities
+  mulDivDown,
+  mulDivUp,
+  calculateK,
+  verifyKInvariant,
+  // AMM math utilities
   getAmountOut,
   getAmountIn,
   getAmountsOut,
@@ -41,9 +46,89 @@ import {
 } from '../utils';
 import { Address, xdr } from '@stellar/stellar-sdk';
 
-// ==================== Math Utilities Tests ====================
+// ==================== Safe Math Utilities Tests ====================
 
-describe('Math Utilities', () => {
+describe('Safe Math Utilities', () => {
+  describe('mulDivDown', () => {
+    it('should calculate (a * b) / c with rounding down', () => {
+      expect(mulDivDown(10n, 20n, 5n)).toBe(40n);
+      expect(mulDivDown(10n, 3n, 4n)).toBe(7n); // 7.5 rounds down to 7
+      expect(mulDivDown(7n, 3n, 10n)).toBe(2n); // 2.1 rounds down to 2
+    });
+
+    it('should handle zero values', () => {
+      expect(mulDivDown(0n, 100n, 10n)).toBe(0n);
+      expect(mulDivDown(100n, 0n, 10n)).toBe(0n);
+    });
+
+    it('should throw on division by zero', () => {
+      expect(() => mulDivDown(100n, 200n, 0n)).toThrow('Division by zero');
+    });
+
+    it('should throw on negative values', () => {
+      expect(() => mulDivDown(-10n, 20n, 5n)).toThrow('Negative values not allowed');
+      expect(() => mulDivDown(10n, -20n, 5n)).toThrow('Negative values not allowed');
+      expect(() => mulDivDown(10n, 20n, -5n)).toThrow('Negative values not allowed');
+    });
+
+    it('should handle large numbers without overflow', () => {
+      const large = 10n ** 30n;
+      const result = mulDivDown(large, 50n, 25n);
+      expect(result).toBe(large * 2n);
+    });
+  });
+
+  describe('mulDivUp', () => {
+    it('should calculate (a * b) / c with rounding up', () => {
+      expect(mulDivUp(10n, 20n, 5n)).toBe(40n); // Exact, no rounding needed
+      expect(mulDivUp(10n, 3n, 4n)).toBe(8n); // 7.5 rounds up to 8
+      expect(mulDivUp(7n, 3n, 10n)).toBe(3n); // 2.1 rounds up to 3
+    });
+
+    it('should be >= mulDivDown', () => {
+      const down = mulDivDown(10n, 3n, 4n);
+      const up = mulDivUp(10n, 3n, 4n);
+      expect(up).toBeGreaterThanOrEqual(down);
+    });
+
+    it('should equal mulDivDown for exact divisions', () => {
+      const down = mulDivDown(10n, 20n, 5n);
+      const up = mulDivUp(10n, 20n, 5n);
+      expect(up).toBe(down);
+    });
+  });
+
+  describe('calculateK', () => {
+    it('should calculate k = reserve0 * reserve1', () => {
+      expect(calculateK(100n, 200n)).toBe(20000n);
+      expect(calculateK(0n, 100n)).toBe(0n);
+      expect(calculateK(1n, 1n)).toBe(1n);
+    });
+
+    it('should throw on negative reserves', () => {
+      expect(() => calculateK(-100n, 200n)).toThrow('Negative reserves not allowed');
+      expect(() => calculateK(100n, -200n)).toThrow('Negative reserves not allowed');
+    });
+  });
+
+  describe('verifyKInvariant', () => {
+    it('should return true when k increases', () => {
+      expect(verifyKInvariant(110n, 110n, 100n, 100n)).toBe(true);
+    });
+
+    it('should return true when k stays same', () => {
+      expect(verifyKInvariant(100n, 100n, 100n, 100n)).toBe(true);
+    });
+
+    it('should return false when k decreases', () => {
+      expect(verifyKInvariant(90n, 90n, 100n, 100n)).toBe(false);
+    });
+  });
+});
+
+// ==================== AMM Math Utilities Tests ====================
+
+describe('AMM Math Utilities', () => {
   describe('getAmountOut', () => {
     it('should calculate correct output amount', () => {
       const amountIn = 1000n;

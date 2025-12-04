@@ -1,6 +1,7 @@
 use astroswap_shared::{
-    calculate_liquidity_tokens, calculate_withdrawal_amounts, emit_deposit, emit_swap,
-    emit_withdraw, get_amount_in, get_amount_out, AstroSwapError, PairInfo, DEFAULT_SWAP_FEE_BPS,
+    calculate_k, calculate_liquidity_tokens, calculate_withdrawal_amounts, emit_deposit, emit_swap,
+    emit_withdraw, get_amount_in, get_amount_out, safe_sub, update_reserves_add, update_reserves_sub,
+    update_reserves_swap, verify_k_invariant, AstroSwapError, PairInfo, DEFAULT_SWAP_FEE_BPS,
     MINIMUM_LIQUIDITY,
 };
 use soroban_sdk::{contract, contractimpl, token, Address, Env, String};
@@ -180,13 +181,14 @@ impl AstroSwapPair {
         }
         lp_token::mint(&env, &user, shares)?;
 
-        // Update reserves
-        let new_reserve_0 = reserve_0 + amount_0;
-        let new_reserve_1 = reserve_1 + amount_1;
+        // Update reserves (with overflow protection)
+        let (new_reserve_0, new_reserve_1) =
+            update_reserves_add(reserve_0, reserve_1, amount_0, amount_1)?;
         set_reserves(&env, new_reserve_0, new_reserve_1);
 
-        // Update k_last for protocol fee
-        set_k_last(&env, new_reserve_0 * new_reserve_1);
+        // Update k_last for protocol fee (with overflow protection)
+        let k = calculate_k(new_reserve_0, new_reserve_1)?;
+        set_k_last(&env, k);
 
         // Emit event
         emit_deposit(
@@ -271,13 +273,14 @@ impl AstroSwapPair {
         token_0_client.transfer(&env.current_contract_address(), &user, &amount_0);
         token_1_client.transfer(&env.current_contract_address(), &user, &amount_1);
 
-        // Update reserves
-        let new_reserve_0 = reserve_0 - amount_0;
-        let new_reserve_1 = reserve_1 - amount_1;
+        // Update reserves (with underflow protection)
+        let (new_reserve_0, new_reserve_1) =
+            update_reserves_sub(reserve_0, reserve_1, amount_0, amount_1)?;
         set_reserves(&env, new_reserve_0, new_reserve_1);
 
-        // Update k_last
-        set_k_last(&env, new_reserve_0 * new_reserve_1);
+        // Update k_last (with overflow protection)
+        let k = calculate_k(new_reserve_0, new_reserve_1)?;
+        set_k_last(&env, k);
 
         // Emit event
         emit_withdraw(
@@ -369,18 +372,19 @@ impl AstroSwapPair {
         let token_out_client = token::Client::new(&env, &token_out);
         token_out_client.transfer(&env.current_contract_address(), &user, &amount_out);
 
-        // Update reserves
-        let (new_reserve_0, new_reserve_1) = if is_token_0_in {
-            (reserve_in + amount_in, reserve_out - amount_out)
-        } else {
-            (reserve_out - amount_out, reserve_in + amount_in)
-        };
+        // Update reserves (with overflow/underflow protection)
+        let (new_reserve_0, new_reserve_1) =
+            update_reserves_swap(reserve_in, reserve_out, amount_in, amount_out, is_token_0_in)?;
         set_reserves(&env, new_reserve_0, new_reserve_1);
 
         // Verify k invariant (should increase slightly due to fees)
-        let k_new = new_reserve_0 * new_reserve_1;
-        let k_old = reserve_in * reserve_out;
-        if k_new < k_old {
+        // Get original reserves for k comparison
+        let (orig_reserve_0, orig_reserve_1) = if is_token_0_in {
+            (reserve_in, reserve_out)
+        } else {
+            (reserve_out, reserve_in)
+        };
+        if !verify_k_invariant(new_reserve_0, new_reserve_1, orig_reserve_0, orig_reserve_1)? {
             Self::release_lock(&env);
             return Err(AstroSwapError::InvalidAmount);
         }
@@ -431,20 +435,24 @@ impl AstroSwapPair {
         let balance_0 = token_0_client.balance(&env.current_contract_address());
         let balance_1 = token_1_client.balance(&env.current_contract_address());
 
-        // Determine swap direction and calculate amount_in from balance diff
+        // Determine swap direction and calculate amount_in from balance diff (with underflow protection)
         let (amount_in, reserve_in, reserve_out, token_out, is_token_0_in) = if token_in == token_0 {
-            let amount_in = balance_0 - reserve_0;
-            if amount_in <= 0 {
-                Self::release_lock(&env);
-                return Err(AstroSwapError::InvalidAmount);
-            }
+            let amount_in = match safe_sub(balance_0, reserve_0) {
+                Ok(amt) if amt > 0 => amt,
+                _ => {
+                    Self::release_lock(&env);
+                    return Err(AstroSwapError::InvalidAmount);
+                }
+            };
             (amount_in, reserve_0, reserve_1, token_1.clone(), true)
         } else if token_in == token_1 {
-            let amount_in = balance_1 - reserve_1;
-            if amount_in <= 0 {
-                Self::release_lock(&env);
-                return Err(AstroSwapError::InvalidAmount);
-            }
+            let amount_in = match safe_sub(balance_1, reserve_1) {
+                Ok(amt) if amt > 0 => amt,
+                _ => {
+                    Self::release_lock(&env);
+                    return Err(AstroSwapError::InvalidAmount);
+                }
+            };
             (amount_in, reserve_1, reserve_0, token_0.clone(), false)
         } else {
             Self::release_lock(&env);
@@ -471,23 +479,18 @@ impl AstroSwapPair {
         let token_out_client = token::Client::new(&env, &token_out);
         token_out_client.transfer(&env.current_contract_address(), &to, &amount_out);
 
-        // Update reserves based on actual balances after output transfer
-        let new_balance_0 = if is_token_0_in {
-            balance_0
+        // Update reserves based on actual balances after output transfer (with underflow protection)
+        let (new_balance_0, new_balance_1) = if is_token_0_in {
+            let new_b1 = safe_sub(balance_1, amount_out)?;
+            (balance_0, new_b1)
         } else {
-            balance_0 - amount_out
-        };
-        let new_balance_1 = if is_token_0_in {
-            balance_1 - amount_out
-        } else {
-            balance_1
+            let new_b0 = safe_sub(balance_0, amount_out)?;
+            (new_b0, balance_1)
         };
         set_reserves(&env, new_balance_0, new_balance_1);
 
-        // Verify k invariant
-        let k_new = new_balance_0 * new_balance_1;
-        let k_old = reserve_0 * reserve_1;
-        if k_new < k_old {
+        // Verify k invariant (with overflow protection)
+        if !verify_k_invariant(new_balance_0, new_balance_1, reserve_0, reserve_1)? {
             Self::release_lock(&env);
             return Err(AstroSwapError::InvalidAmount);
         }
@@ -504,8 +507,18 @@ impl AstroSwapPair {
     }
 
     /// Force reserves to match actual token balances
-    /// Can be called by anyone to recover from edge cases
+    /// SECURITY: Only callable by factory contract to prevent manipulation
+    /// This prevents attackers from manipulating reserves after sending tokens
+    /// to the pair, which could be used in flash loan or arbitrage attacks.
     pub fn sync(env: Env) -> Result<(), AstroSwapError> {
+        // SECURITY FIX: Only factory can call sync
+        // This prevents reserve manipulation attacks where an attacker could:
+        // 1. Send tokens directly to the pair
+        // 2. Call sync to update reserves
+        // 3. Exploit the price change in the same transaction
+        let factory = get_factory(&env);
+        factory.require_auth();
+
         let token_0 = get_token_0(&env);
         let token_1 = get_token_1(&env);
 
@@ -548,19 +561,21 @@ impl AstroSwapPair {
         let balance_0 = token_0_client.balance(&env.current_contract_address());
         let balance_1 = token_1_client.balance(&env.current_contract_address());
 
-        // Transfer excess
+        // Transfer excess (using safe_sub for consistency even though we check balance > reserve)
         if balance_0 > reserve_0 {
+            let excess_0 = safe_sub(balance_0, reserve_0)?;
             token_0_client.transfer(
                 &env.current_contract_address(),
                 &to,
-                &(balance_0 - reserve_0),
+                &excess_0,
             );
         }
         if balance_1 > reserve_1 {
+            let excess_1 = safe_sub(balance_1, reserve_1)?;
             token_1_client.transfer(
                 &env.current_contract_address(),
                 &to,
-                &(balance_1 - reserve_1),
+                &excess_1,
             );
         }
 

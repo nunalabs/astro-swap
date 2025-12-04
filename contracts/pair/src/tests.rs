@@ -495,11 +495,12 @@ fn test_get_amount_out() {
 
     pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
 
-    let amount_out = pair_client.get_amount_out(&10_0000000, &token_0_addr);
+    // Use try_get_amount_out which returns Result
+    let amount_out = pair_client.try_get_amount_out(&10_0000000, &token_0_addr);
 
     // Should get some output
     assert!(amount_out.is_ok());
-    assert!(amount_out.unwrap() > 0);
+    assert!(amount_out.unwrap().unwrap() > 0);
 }
 
 #[test]
@@ -511,11 +512,12 @@ fn test_get_amount_in() {
 
     pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
 
-    let amount_in = pair_client.get_amount_in(&10_0000000, &token_1_addr);
+    // Use try_get_amount_in which returns Result
+    let amount_in = pair_client.try_get_amount_in(&10_0000000, &token_1_addr);
 
     // Should need some input
     assert!(amount_in.is_ok());
-    assert!(amount_in.unwrap() > 0);
+    assert!(amount_in.unwrap().unwrap() > 0);
 }
 
 #[test]
@@ -595,7 +597,8 @@ fn test_multiple_swaps_in_same_direction() {
     }
 
     // Total should be less than a single 50 token swap (due to price moving)
-    let single_swap_out = pair_client.get_amount_out(&50_0000000, &token_0_addr).unwrap();
+    // Note: get_amount_out returns i128 directly when called without try_
+    let single_swap_out = pair_client.get_amount_out(&50_0000000, &token_0_addr);
 
     // Each individual swap gets worse rate as price moves
     // But with proper AMM, total should still be meaningful

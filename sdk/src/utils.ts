@@ -12,7 +12,57 @@ export const BPS_DENOMINATOR = 10_000n;
 export const MINIMUM_LIQUIDITY = 1000n;
 export const DEFAULT_DEADLINE_SECONDS = 30 * 60; // 30 minutes
 
-// ==================== Math Utilities ====================
+// ==================== Safe Math Utilities ====================
+
+/**
+ * Multiply then divide with rounding down: (a * b) / c
+ * Rounds DOWN (floor) - favors the protocol
+ * Safe for BigInt as JavaScript BigInt handles arbitrary precision
+ */
+export function mulDivDown(a: bigint, b: bigint, c: bigint): bigint {
+  if (c === 0n) throw new Error('Division by zero');
+  if (a === 0n || b === 0n) return 0n;
+  if (a < 0n || b < 0n || c < 0n) throw new Error('Negative values not allowed');
+  return (a * b) / c;
+}
+
+/**
+ * Multiply then divide with rounding up: ceil((a * b) / c)
+ * Rounds UP (ceiling) - favors the user paying more
+ */
+export function mulDivUp(a: bigint, b: bigint, c: bigint): bigint {
+  if (c === 0n) throw new Error('Division by zero');
+  if (a === 0n || b === 0n) return 0n;
+  if (a < 0n || b < 0n || c < 0n) throw new Error('Negative values not allowed');
+  const product = a * b;
+  // ceil(a/b) = floor((a + b - 1) / b)
+  return (product + c - 1n) / c;
+}
+
+/**
+ * Calculate k = reserve_0 * reserve_1
+ * Used for constant product invariant verification
+ */
+export function calculateK(reserve0: bigint, reserve1: bigint): bigint {
+  if (reserve0 < 0n || reserve1 < 0n) throw new Error('Negative reserves not allowed');
+  return reserve0 * reserve1;
+}
+
+/**
+ * Verify k invariant: k_new >= k_old
+ */
+export function verifyKInvariant(
+  newReserve0: bigint,
+  newReserve1: bigint,
+  oldReserve0: bigint,
+  oldReserve1: bigint
+): boolean {
+  const kNew = calculateK(newReserve0, newReserve1);
+  const kOld = calculateK(oldReserve0, oldReserve1);
+  return kNew >= kOld;
+}
+
+// ==================== AMM Math Utilities ====================
 
 /**
  * Calculate the amount out for a swap using constant product formula
@@ -93,12 +143,13 @@ export function getAmountsIn(
 
 /**
  * Quote: given some amount of token A, how much of token B should be added
+ * Uses mulDivDown for phantom overflow protection
  */
 export function quote(amountA: bigint, reserveA: bigint, reserveB: bigint): bigint {
   if (amountA <= 0n) throw new Error('Invalid amount');
   if (reserveA <= 0n || reserveB <= 0n) throw new Error('Insufficient liquidity');
 
-  return (amountA * reserveB) / reserveA;
+  return mulDivDown(amountA, reserveB, reserveA);
 }
 
 /**
@@ -132,6 +183,7 @@ export function calculateInitialLiquidity(amount0: bigint, amount1: bigint): big
 
 /**
  * Calculate LP tokens for adding liquidity to existing pool
+ * Uses mulDivDown for phantom overflow protection (rounds down, favors protocol)
  */
 export function calculateLiquidity(
   amount0: bigint,
@@ -144,14 +196,15 @@ export function calculateLiquidity(
     return calculateInitialLiquidity(amount0, amount1);
   }
 
-  const liquidity0 = (amount0 * totalSupply) / reserve0;
-  const liquidity1 = (amount1 * totalSupply) / reserve1;
+  const liquidity0 = mulDivDown(amount0, totalSupply, reserve0);
+  const liquidity1 = mulDivDown(amount1, totalSupply, reserve1);
 
   return liquidity0 < liquidity1 ? liquidity0 : liquidity1;
 }
 
 /**
  * Calculate price impact in basis points
+ * Uses mulDivDown for phantom overflow protection
  */
 export function calculatePriceImpact(
   amountIn: bigint,
@@ -159,12 +212,13 @@ export function calculatePriceImpact(
   reserveOut: bigint,
   feeBps: number = 30
 ): number {
-  const expectedOut = (amountIn * reserveOut) / reserveIn;
+  const expectedOut = mulDivDown(amountIn, reserveOut, reserveIn);
   const actualOut = getAmountOut(amountIn, reserveIn, reserveOut, feeBps);
 
   if (expectedOut === 0n) return 0;
 
-  const impact = ((expectedOut - actualOut) * BPS_DENOMINATOR) / expectedOut;
+  const diff = expectedOut - actualOut;
+  const impact = mulDivDown(diff, BPS_DENOMINATOR, expectedOut);
   return Number(impact);
 }
 

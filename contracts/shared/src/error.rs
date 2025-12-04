@@ -1,3 +1,4 @@
+use astro_core_shared::types::SharedError;
 use soroban_sdk::contracterror;
 
 /// Error codes for AstroSwap contracts
@@ -67,4 +68,54 @@ pub enum AstroSwapError {
     InvalidLaunchpad = 702,
     GraduationFailed = 703,
     InvalidPair = 704,
+}
+
+/// Convert SharedError from astro-core-shared to AstroSwapError
+impl From<SharedError> for AstroSwapError {
+    fn from(err: SharedError) -> Self {
+        match err {
+            // Initialization errors (1-99)
+            SharedError::AlreadyInitialized => AstroSwapError::AlreadyInitialized,
+            SharedError::NotInitialized => AstroSwapError::NotInitialized,
+            SharedError::InvalidInitParams => AstroSwapError::InvalidArgument,
+            // Authorization errors (100-199)
+            SharedError::Unauthorized => AstroSwapError::Unauthorized,
+            SharedError::NotAdmin => AstroSwapError::InvalidAdmin,
+            SharedError::NotOwner => AstroSwapError::Unauthorized,
+            SharedError::RoleRequired => AstroSwapError::Unauthorized,
+            // Validation errors (200-299)
+            SharedError::InvalidAmount => AstroSwapError::InvalidAmount,
+            SharedError::AmountExceedsMax => AstroSwapError::InvalidAmount,
+            SharedError::AmountBelowMin => AstroSwapError::MinimumNotMet,
+            SharedError::InvalidAddress => AstroSwapError::InvalidArgument,
+            SharedError::InvalidBps => AstroSwapError::InvalidArgument,
+            SharedError::InvalidTimestamp => AstroSwapError::InvalidArgument,
+            SharedError::BelowMinimum => AstroSwapError::MinimumNotMet,
+            SharedError::InvalidPercentage => AstroSwapError::InvalidArgument,
+            // State errors (300-399)
+            SharedError::ContractPaused => AstroSwapError::ContractPaused,
+            SharedError::ContractNotPaused => AstroSwapError::InvalidArgument,
+            SharedError::InvalidState => AstroSwapError::InvalidArgument,
+            SharedError::AlreadyExecuted => AstroSwapError::InvalidArgument,
+            SharedError::DeadlineExpired => AstroSwapError::DeadlineExpired,
+            // Token/balance errors (400-499)
+            SharedError::InsufficientBalance => AstroSwapError::InsufficientBalance,
+            SharedError::TokenNotFound => AstroSwapError::InvalidToken,
+            SharedError::TransferFailed => AstroSwapError::TransferFailed,
+            SharedError::InsufficientAllowance => AstroSwapError::InsufficientAllowance,
+            // Math errors (500-599)
+            SharedError::Overflow => AstroSwapError::Overflow,
+            SharedError::Underflow => AstroSwapError::Underflow,
+            SharedError::DivisionByZero => AstroSwapError::DivisionByZero,
+            // Cross-contract errors (600-699)
+            SharedError::CrossContractCallFailed => AstroSwapError::AdapterError,
+            SharedError::ExternalContractNotSet => AstroSwapError::InvalidArgument,
+            // Rate limiting errors (700-799)
+            SharedError::DailyLimitExceeded => AstroSwapError::InvalidAmount,
+            SharedError::TransactionLimitExceeded => AstroSwapError::InvalidAmount,
+            SharedError::CooldownNotElapsed => AstroSwapError::TimelockNotExpired,
+            SharedError::LimitExceeded => AstroSwapError::InvalidAmount,
+            SharedError::UnlockBufferNotElapsed => AstroSwapError::TimelockNotExpired,
+        }
+    }
 }

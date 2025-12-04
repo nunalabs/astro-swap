@@ -1,5 +1,8 @@
 # CLAUDE.md - AstroSwap DEX
 
+> ## Mantra
+> **Código profesional, escalable, mantenible, robusto y fluido - top mundial para interacción con usuarios reales, siempre con tecnología de calidad e implementaciones avanzadas.**
+
 > **AstroSwap is a professional DEX (Decentralized Exchange) built on Stellar Soroban.**
 
 ## Overview
@@ -223,6 +226,33 @@ See `DEPLOYMENT.md` for detailed deployment instructions.
 # Quick deploy to testnet
 make deploy-testnet
 ```
+
+## Claude Code Agents
+
+### Local Agents (astro-swap/.claude/agents/)
+
+| Agent | Model | Purpose |
+|-------|-------|---------|
+| `amm-pool-auditor` | opus | K invariant, swap math validation |
+| `router-validator` | sonnet | Path finding, multi-hop swaps |
+| `sdk-reviewer` | haiku | TypeScript SDK patterns |
+| `dex-security` | opus | DEX attack vectors |
+
+### Inherited Agents (Root .claude/agents/)
+
+| Agent | Model | Purpose |
+|-------|-------|---------|
+| `security-auditor` | sonnet | Security vulnerabilities |
+| `test-generator` | sonnet | Unit/integration tests |
+| `frontend-architect` | sonnet | React architecture |
+| `ux-flow-tester` | sonnet | Swap flow validation |
+| `continuous-improver` | sonnet | Auto-documentation |
+
+### Local Skills
+
+| Skill | Purpose |
+|-------|---------|
+| `sdk-patterns` | TypeScript SDK best practices |
 
 ## Contributing
 

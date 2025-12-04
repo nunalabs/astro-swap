@@ -383,9 +383,13 @@ describe('AstroSwapRouter Integration', () => {
   // Note: These tests would require mocking the contract clients
   // or running against a test network
 
+  // Valid test contract ID (properly formatted Stellar contract address)
+  const TEST_FACTORY_ADDRESS =
+    'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC';
+
   it('should initialize with valid config', () => {
     const router = new AstroSwapRouter({
-      factoryAddress: 'CFACTORY...',
+      factoryAddress: TEST_FACTORY_ADDRESS,
       network: NETWORKS.testnet,
     });
 
@@ -404,7 +408,7 @@ describe('AstroSwapRouter Integration', () => {
   it('should throw error for invalid maxHops', () => {
     expect(() => {
       new AstroSwapRouter({
-        factoryAddress: 'CFACTORY...',
+        factoryAddress: TEST_FACTORY_ADDRESS,
         network: NETWORKS.testnet,
         maxHops: 10, // Too high
       });
@@ -413,7 +417,7 @@ describe('AstroSwapRouter Integration', () => {
 
   it('should clear cache', () => {
     const router = new AstroSwapRouter({
-      factoryAddress: 'CFACTORY...',
+      factoryAddress: TEST_FACTORY_ADDRESS,
       network: NETWORKS.testnet,
     });
 
@@ -425,7 +429,7 @@ describe('AstroSwapRouter Integration', () => {
 
   it('should get stats', () => {
     const router = new AstroSwapRouter({
-      factoryAddress: 'CFACTORY...',
+      factoryAddress: TEST_FACTORY_ADDRESS,
       network: NETWORKS.testnet,
     });
 

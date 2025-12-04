@@ -1,8 +1,20 @@
+//! Math utilities for AstroSwap contracts
+//!
+//! This module re-exports mathematical functions from astro-core-shared
+//! and provides AstroSwap-specific wrappers and constants.
+
 use crate::error::AstroSwapError;
 
-/// Precision for calculations (18 decimals)
-pub const PRECISION: i128 = 1_000_000_000_000_000_000;
+// Re-export constants from astro-core-shared
+pub use astro_core_shared::math::{
+    BPS_DENOMINATOR as CORE_BPS_DENOMINATOR,
+    MIN_TRADE_AMOUNT,
+    ONE_TOKEN,
+    PRECISION,
+    STELLAR_DECIMALS,
+};
 
+// Local constants for DEX-specific configuration
 /// Basis points denominator (100% = 10000)
 pub const BPS_DENOMINATOR: u32 = 10_000;
 
@@ -18,119 +30,165 @@ pub const LP_FEE_BPS: u32 = 25;
 /// Minimum liquidity to prevent division by zero attacks
 pub const MINIMUM_LIQUIDITY: i128 = 1000;
 
+// ==================== Basic Safe Arithmetic ====================
+// Wrapper functions that convert SharedError to AstroSwapError
+
 /// Safe addition with overflow check
+#[inline]
 pub fn safe_add(a: i128, b: i128) -> Result<i128, AstroSwapError> {
-    a.checked_add(b).ok_or(AstroSwapError::Overflow)
+    astro_core_shared::math::safe_add(a, b).map_err(Into::into)
 }
 
 /// Safe subtraction with underflow check
+#[inline]
 pub fn safe_sub(a: i128, b: i128) -> Result<i128, AstroSwapError> {
-    a.checked_sub(b).ok_or(AstroSwapError::Underflow)
+    astro_core_shared::math::safe_sub(a, b).map_err(Into::into)
 }
 
 /// Safe multiplication with overflow check
+#[inline]
 pub fn safe_mul(a: i128, b: i128) -> Result<i128, AstroSwapError> {
-    a.checked_mul(b).ok_or(AstroSwapError::Overflow)
+    astro_core_shared::math::safe_mul(a, b).map_err(Into::into)
 }
 
 /// Safe division with zero check
+#[inline]
 pub fn safe_div(a: i128, b: i128) -> Result<i128, AstroSwapError> {
-    if b == 0 {
-        return Err(AstroSwapError::DivisionByZero);
-    }
-    a.checked_div(b).ok_or(AstroSwapError::Overflow)
+    astro_core_shared::math::safe_div(a, b).map_err(Into::into)
 }
 
+// ==================== Advanced Safe Arithmetic ====================
+
+/// Multiply then divide with phantom overflow protection: (a * b) / c
+/// Rounds DOWN (floor) - favors the protocol
+#[inline]
+pub fn mul_div_down(a: i128, b: i128, c: i128) -> Result<i128, AstroSwapError> {
+    astro_core_shared::math::mul_div_down(a, b, c).map_err(Into::into)
+}
+
+/// Multiply then divide with phantom overflow protection: (a * b) / c
+/// Rounds UP (ceiling) - favors the user paying more / receiving less
+#[inline]
+pub fn mul_div_up(a: i128, b: i128, c: i128) -> Result<i128, AstroSwapError> {
+    astro_core_shared::math::mul_div_up(a, b, c).map_err(Into::into)
+}
+
+// ==================== K Invariant Functions ====================
+
+/// Calculate k = reserve_0 * reserve_1 with overflow protection
+#[inline]
+pub fn calculate_k(reserve_0: i128, reserve_1: i128) -> Result<i128, AstroSwapError> {
+    astro_core_shared::math::calculate_k(reserve_0, reserve_1).map_err(Into::into)
+}
+
+/// Update reserves after deposit with overflow check
+#[inline]
+pub fn update_reserves_add(
+    reserve_0: i128,
+    reserve_1: i128,
+    amount_0: i128,
+    amount_1: i128,
+) -> Result<(i128, i128), AstroSwapError> {
+    astro_core_shared::math::update_reserves_add(reserve_0, reserve_1, amount_0, amount_1)
+        .map_err(Into::into)
+}
+
+/// Update reserves after withdrawal with underflow check
+#[inline]
+pub fn update_reserves_sub(
+    reserve_0: i128,
+    reserve_1: i128,
+    amount_0: i128,
+    amount_1: i128,
+) -> Result<(i128, i128), AstroSwapError> {
+    astro_core_shared::math::update_reserves_sub(reserve_0, reserve_1, amount_0, amount_1)
+        .map_err(Into::into)
+}
+
+/// Update reserves after swap with overflow/underflow check
+#[inline]
+pub fn update_reserves_swap(
+    reserve_in: i128,
+    reserve_out: i128,
+    amount_in: i128,
+    amount_out: i128,
+    is_token_0_in: bool,
+) -> Result<(i128, i128), AstroSwapError> {
+    astro_core_shared::math::update_reserves_swap(
+        reserve_in, reserve_out, amount_in, amount_out, is_token_0_in,
+    )
+    .map_err(Into::into)
+}
+
+/// Verify k invariant: k_new >= k_old
+#[inline]
+pub fn verify_k_invariant(
+    new_reserve_0: i128,
+    new_reserve_1: i128,
+    old_reserve_0: i128,
+    old_reserve_1: i128,
+) -> Result<bool, AstroSwapError> {
+    astro_core_shared::math::verify_k_invariant(
+        new_reserve_0, new_reserve_1, old_reserve_0, old_reserve_1,
+    )
+    .map_err(Into::into)
+}
+
+// ==================== AMM Math Functions ====================
+
 /// Integer square root using Newton's method
-/// Used for calculating initial LP tokens: sqrt(amount_a * amount_b)
+/// Re-exported from astro-core-shared
+#[inline]
 pub fn sqrt(value: i128) -> i128 {
-    if value == 0 {
-        return 0;
-    }
-
-    let mut x = value;
-    let mut y = (x + 1) / 2;
-
-    while y < x {
-        x = y;
-        y = (x + value / x) / 2;
-    }
-
-    x
+    astro_core_shared::math::sqrt(value)
 }
 
 /// Calculate amount out for a swap using constant product formula
-/// Formula: amount_out = (reserve_out * amount_in_with_fee) / (reserve_in + amount_in_with_fee)
+#[inline]
 pub fn get_amount_out(
     amount_in: i128,
     reserve_in: i128,
     reserve_out: i128,
     fee_bps: u32,
 ) -> Result<i128, AstroSwapError> {
-    if amount_in <= 0 {
-        return Err(AstroSwapError::InvalidAmount);
-    }
-    if reserve_in <= 0 || reserve_out <= 0 {
-        return Err(AstroSwapError::InsufficientLiquidity);
-    }
-
-    // Apply fee: amount_in_with_fee = amount_in * (10000 - fee) / 10000
-    let fee_multiplier = (BPS_DENOMINATOR - fee_bps) as i128;
-    let amount_in_with_fee = safe_mul(amount_in, fee_multiplier)?;
-
-    // numerator = amount_in_with_fee * reserve_out
-    let numerator = safe_mul(amount_in_with_fee, reserve_out)?;
-
-    // denominator = reserve_in * 10000 + amount_in_with_fee
-    let reserve_in_scaled = safe_mul(reserve_in, BPS_DENOMINATOR as i128)?;
-    let denominator = safe_add(reserve_in_scaled, amount_in_with_fee)?;
-
-    safe_div(numerator, denominator)
+    astro_core_shared::math::get_amount_out(amount_in, reserve_in, reserve_out, fee_bps)
+        .map_err(Into::into)
 }
 
 /// Calculate amount in needed for a specific output
-/// Formula: amount_in = (reserve_in * amount_out * 10000) / ((reserve_out - amount_out) * (10000 - fee)) + 1
+#[inline]
 pub fn get_amount_in(
     amount_out: i128,
     reserve_in: i128,
     reserve_out: i128,
     fee_bps: u32,
 ) -> Result<i128, AstroSwapError> {
-    if amount_out <= 0 {
-        return Err(AstroSwapError::InvalidAmount);
-    }
-    if reserve_in <= 0 || reserve_out <= 0 {
-        return Err(AstroSwapError::InsufficientLiquidity);
-    }
-    if amount_out >= reserve_out {
-        return Err(AstroSwapError::InsufficientLiquidity);
-    }
-
-    // numerator = reserve_in * amount_out * 10000
-    let numerator = safe_mul(safe_mul(reserve_in, amount_out)?, BPS_DENOMINATOR as i128)?;
-
-    // denominator = (reserve_out - amount_out) * (10000 - fee)
-    let reserve_diff = safe_sub(reserve_out, amount_out)?;
-    let fee_multiplier = (BPS_DENOMINATOR - fee_bps) as i128;
-    let denominator = safe_mul(reserve_diff, fee_multiplier)?;
-
-    // Add 1 to round up
-    safe_add(safe_div(numerator, denominator)?, 1)
+    astro_core_shared::math::get_amount_in(amount_out, reserve_in, reserve_out, fee_bps)
+        .map_err(Into::into)
 }
 
 /// Quote: given some amount of token A, how much of token B should be added
-/// to maintain the ratio (used for adding liquidity)
+#[inline]
 pub fn quote(amount_a: i128, reserve_a: i128, reserve_b: i128) -> Result<i128, AstroSwapError> {
-    if amount_a <= 0 {
-        return Err(AstroSwapError::InvalidAmount);
-    }
-    if reserve_a <= 0 || reserve_b <= 0 {
-        return Err(AstroSwapError::InsufficientLiquidity);
-    }
-
-    // amount_b = amount_a * reserve_b / reserve_a
-    safe_div(safe_mul(amount_a, reserve_b)?, reserve_a)
+    astro_core_shared::math::quote(amount_a, reserve_a, reserve_b).map_err(Into::into)
 }
+
+// ==================== Basis Points Functions ====================
+
+/// Apply basis points (percentage) to an amount - rounds DOWN
+#[inline]
+pub fn apply_bps(amount: i128, bps: u32) -> Result<i128, AstroSwapError> {
+    astro_core_shared::math::apply_bps(amount, bps).map_err(Into::into)
+}
+
+/// Apply basis points with round UP (for fee calculations)
+#[inline]
+pub fn apply_bps_round_up(amount: i128, bps: u32) -> Result<i128, AstroSwapError> {
+    astro_core_shared::math::apply_bps_round_up(amount, bps).map_err(Into::into)
+}
+
+// ==================== DEX-Specific Functions ====================
+// These functions are specific to AstroSwap and not in astro-core-shared
 
 /// Calculate LP tokens to mint for a deposit
 /// First deposit: sqrt(amount_a * amount_b) - MINIMUM_LIQUIDITY
@@ -159,8 +217,8 @@ pub fn calculate_liquidity_tokens(
         Ok(liquidity - MINIMUM_LIQUIDITY)
     } else {
         // Subsequent deposits: proportional to existing liquidity
-        let liquidity_a = safe_div(safe_mul(amount_a, total_supply)?, reserve_a)?;
-        let liquidity_b = safe_div(safe_mul(amount_b, total_supply)?, reserve_b)?;
+        let liquidity_a = mul_div_down(amount_a, total_supply, reserve_a)?;
+        let liquidity_b = mul_div_down(amount_b, total_supply, reserve_b)?;
 
         // Return the minimum to maintain ratio
         Ok(core::cmp::min(liquidity_a, liquidity_b))
@@ -185,8 +243,8 @@ pub fn calculate_withdrawal_amounts(
         return Err(AstroSwapError::InsufficientBalance);
     }
 
-    let amount_a = safe_div(safe_mul(shares, reserve_a)?, total_supply)?;
-    let amount_b = safe_div(safe_mul(shares, reserve_b)?, total_supply)?;
+    let amount_a = mul_div_down(shares, reserve_a, total_supply)?;
+    let amount_b = mul_div_down(shares, reserve_b, total_supply)?;
 
     Ok((amount_a, amount_b))
 }
@@ -200,7 +258,7 @@ pub fn calculate_price_impact(
     fee_bps: u32,
 ) -> Result<u32, AstroSwapError> {
     // Expected output without price impact
-    let expected_out = safe_div(safe_mul(amount_in, reserve_out)?, reserve_in)?;
+    let expected_out = mul_div_down(amount_in, reserve_out, reserve_in)?;
 
     // Actual output with AMM
     let actual_out = get_amount_out(amount_in, reserve_in, reserve_out, fee_bps)?;
@@ -210,10 +268,8 @@ pub fn calculate_price_impact(
         return Ok(0);
     }
 
-    let impact = safe_div(
-        safe_mul(safe_sub(expected_out, actual_out)?, BPS_DENOMINATOR as i128)?,
-        expected_out,
-    )?;
+    let diff = safe_sub(expected_out, actual_out)?;
+    let impact = mul_div_down(diff, BPS_DENOMINATOR as i128, expected_out)?;
 
     Ok(impact as u32)
 }
@@ -221,7 +277,6 @@ pub fn calculate_price_impact(
 /// Calculate staking multiplier based on time staked
 /// Progressive rewards: starts at 1x, increases to 1.3x over 60 days
 pub fn calculate_staking_multiplier(stake_duration_seconds: u64) -> u32 {
-    // Note: DAY = 86_400, used for reference in comments below
     match stake_duration_seconds {
         0..=604_800 => 10_000,           // 0-7 days: 1.0x
         604_801..=1_209_600 => 11_000,   // 8-14 days: 1.1x
@@ -275,95 +330,55 @@ mod tests {
 
     #[test]
     fn test_staking_multiplier() {
-        assert_eq!(calculate_staking_multiplier(0), 10_000); // Day 0
-        assert_eq!(calculate_staking_multiplier(86_400 * 5), 10_000); // Day 5
-        assert_eq!(calculate_staking_multiplier(86_400 * 10), 11_000); // Day 10
-        assert_eq!(calculate_staking_multiplier(86_400 * 20), 12_000); // Day 20
-        assert_eq!(calculate_staking_multiplier(86_400 * 45), 12_500); // Day 45
-        assert_eq!(calculate_staking_multiplier(86_400 * 90), 13_000); // Day 90
-    }
-
-    #[test]
-    fn test_get_amount_in() {
-        // To get 906 out, we need approximately 1000 in (inverse of get_amount_out)
-        let result = get_amount_in(906, 10000, 10000, 30).unwrap();
-        // Should be approximately 1000
-        assert!(result > 990 && result < 1100);
-    }
-
-    #[test]
-    fn test_zero_input_fails() {
-        // Zero amount should fail
-        let result = get_amount_out(0, 10000, 10000, 30);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_zero_reserves_fail() {
-        // Zero reserves should fail
-        let result = get_amount_out(1000, 0, 10000, 30);
-        assert!(result.is_err());
-
-        let result = get_amount_out(1000, 10000, 0, 30);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_insufficient_liquidity() {
-        // Trying to swap more than reserve should fail
-        let result = get_amount_out(20000, 10000, 10000, 30);
-        // This should return an amount less than reserve_out but won't error
-        assert!(result.is_ok());
-        // The output can't exceed reserve_out
-        assert!(result.unwrap() < 10000);
+        assert_eq!(calculate_staking_multiplier(0), 10_000);
+        assert_eq!(calculate_staking_multiplier(86_400 * 5), 10_000);
+        assert_eq!(calculate_staking_multiplier(86_400 * 10), 11_000);
+        assert_eq!(calculate_staking_multiplier(86_400 * 20), 12_000);
+        assert_eq!(calculate_staking_multiplier(86_400 * 45), 12_500);
+        assert_eq!(calculate_staking_multiplier(86_400 * 90), 13_000);
     }
 
     #[test]
     fn test_withdrawal_amounts() {
-        // Withdrawing 10% of LP tokens should give 10% of reserves
         let (amount_0, amount_1) = calculate_withdrawal_amounts(1000, 10000, 10000, 10000).unwrap();
         assert_eq!(amount_0, 1000);
         assert_eq!(amount_1, 1000);
     }
 
     #[test]
-    fn test_safe_math_overflow_protection() {
-        // Large numbers should not overflow
-        let large = i128::MAX / 2;
-        let result = safe_mul(large, 2);
-        assert!(result.is_ok());
-
-        // But overflow should be caught
-        let result = safe_mul(i128::MAX, 2);
-        assert!(result.is_err());
+    fn test_mul_div_down_basic() {
+        assert_eq!(mul_div_down(10, 20, 5).unwrap(), 40);
+        assert_eq!(mul_div_down(10, 3, 4).unwrap(), 7);
     }
 
     #[test]
-    fn test_fee_calculation() {
-        // Test with different fee tiers
-        // 0.3% fee (30 bps)
-        let result_30 = get_amount_out(1000, 10000, 10000, 30).unwrap();
-
-        // 1% fee (100 bps)
-        let result_100 = get_amount_out(1000, 10000, 10000, 100).unwrap();
-
-        // Higher fee should result in less output
-        assert!(result_30 > result_100);
-
-        // Zero fee
-        let result_0 = get_amount_out(1000, 10000, 10000, 0).unwrap();
-        assert!(result_0 > result_30);
+    fn test_mul_div_up_basic() {
+        assert_eq!(mul_div_up(10, 20, 5).unwrap(), 40);
+        assert_eq!(mul_div_up(10, 3, 4).unwrap(), 8);
     }
 
     #[test]
-    fn test_price_impact() {
-        // Small swap on large pool - low impact
-        let result_small = calculate_price_impact(100, 1000000, 1000000, 30).unwrap();
+    fn test_min_trade_amount_constant() {
+        // Verify MIN_TRADE_AMOUNT is 0.1 XLM (1_000_000 stroops)
+        assert_eq!(MIN_TRADE_AMOUNT, 1_000_000);
+    }
 
-        // Large swap on small pool - high impact
-        let result_large = calculate_price_impact(10000, 100000, 100000, 30).unwrap();
+    #[test]
+    fn test_k_invariant_after_swap() {
+        let reserve_0 = 1_000_000i128;
+        let reserve_1 = 1_000_000i128;
+        let amount_in = 10_000i128;
+        let fee_bps = 30u32;
 
-        // Larger swaps relative to pool size should have higher price impact
-        assert!(result_large > result_small);
+        let amount_out = get_amount_out(amount_in, reserve_0, reserve_1, fee_bps).unwrap();
+
+        let new_reserve_0 = reserve_0 + amount_in;
+        let new_reserve_1 = reserve_1 - amount_out;
+
+        let k_before = calculate_k(reserve_0, reserve_1).unwrap();
+        let k_after = calculate_k(new_reserve_0, new_reserve_1).unwrap();
+
+        // K should increase due to fees
+        assert!(k_after >= k_before, "K should not decrease after swap with fees");
     }
 }

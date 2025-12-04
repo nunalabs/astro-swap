@@ -23,7 +23,15 @@ mod storage;
 use astroswap_shared::{
     emit_graduation, AstroSwapError, FactoryClient, GraduatedToken, PairClient, TokenMetadata,
 };
-use soroban_sdk::{contract, contractimpl, token, Address, Env, IntoVal, Symbol, Vec};
+use soroban_sdk::{contract, contractevent, contractimpl, token, Address, Env, IntoVal, Symbol, Vec};
+
+/// LP tokens burned event (permanent liquidity lock)
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LpBurned {
+    pub pair: Address,
+    pub amount: i128,
+}
 
 use crate::storage::{
     acquire_lock, extend_graduated_token_ttl, extend_instance_ttl, get_admin, get_factory,
@@ -372,8 +380,11 @@ impl AstroSwapBridge {
         pair_client.burn(&env.current_contract_address(), amount)?;
 
         // Log the burn for transparency
-        env.events()
-            .publish((Symbol::new(env, "lp_burned"),), (pair.clone(), amount));
+        LpBurned {
+            pair: pair.clone(),
+            amount,
+        }
+        .publish(env);
 
         Ok(())
     }

@@ -1,7 +1,8 @@
 {
   "generators": {
     "address": 3,
-    "nonce": 0
+    "nonce": 0,
+    "mux_id": 0
   },
   "auth": [
     [],
@@ -18,7 +19,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "u64": 3600
+                  "u64": "3600"
                 }
               ]
             }
@@ -40,10 +41,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 100000000
-                  }
+                  "i128": "100000000"
                 },
                 {
                   "u32": 6
@@ -71,10 +69,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 110000000
-                  }
+                  "i128": "110000000"
                 },
                 {
                   "u32": 6
@@ -102,10 +97,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 105000000
-                  }
+                  "i128": "105000000"
                 },
                 {
                   "u32": 6
@@ -123,7 +115,7 @@
     []
   ],
   "ledger": {
-    "protocol_version": 22,
+    "protocol_version": 23,
     "sequence_number": 0,
     "timestamp": 1200,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
@@ -221,10 +213,7 @@
                             "symbol": "cumulative_price"
                           },
                           "val": {
-                            "i128": {
-                              "hi": 0,
-                              "lo": 100000000
-                            }
+                            "i128": "100000000"
                           }
                         },
                         {
@@ -232,10 +221,7 @@
                             "symbol": "price"
                           },
                           "val": {
-                            "i128": {
-                              "hi": 0,
-                              "lo": 100000000
-                            }
+                            "i128": "100000000"
                           }
                         },
                         {
@@ -243,7 +229,7 @@
                             "symbol": "timestamp"
                           },
                           "val": {
-                            "u64": 0
+                            "u64": "0"
                           }
                         }
                       ]
@@ -255,10 +241,7 @@
                             "symbol": "cumulative_price"
                           },
                           "val": {
-                            "i128": {
-                              "hi": 0,
-                              "lo": 66100000000
-                            }
+                            "i128": "66100000000"
                           }
                         },
                         {
@@ -266,10 +249,7 @@
                             "symbol": "price"
                           },
                           "val": {
-                            "i128": {
-                              "hi": 0,
-                              "lo": 110000000
-                            }
+                            "i128": "110000000"
                           }
                         },
                         {
@@ -277,7 +257,7 @@
                             "symbol": "timestamp"
                           },
                           "val": {
-                            "u64": 600
+                            "u64": "600"
                           }
                         }
                       ]
@@ -289,10 +269,7 @@
                             "symbol": "cumulative_price"
                           },
                           "val": {
-                            "i128": {
-                              "hi": 0,
-                              "lo": 129100000000
-                            }
+                            "i128": "129100000000"
                           }
                         },
                         {
@@ -300,10 +277,7 @@
                             "symbol": "price"
                           },
                           "val": {
-                            "i128": {
-                              "hi": 0,
-                              "lo": 105000000
-                            }
+                            "i128": "105000000"
                           }
                         },
                         {
@@ -311,7 +285,7 @@
                             "symbol": "timestamp"
                           },
                           "val": {
-                            "u64": 1200
+                            "u64": "1200"
                           }
                         }
                       ]
@@ -375,10 +349,7 @@
                         "symbol": "price"
                       },
                       "val": {
-                        "i128": {
-                          "hi": 0,
-                          "lo": 105000000
-                        }
+                        "i128": "105000000"
                       }
                     },
                     {
@@ -394,7 +365,7 @@
                         "symbol": "timestamp"
                       },
                       "val": {
-                        "u64": 1200
+                        "u64": "1200"
                       }
                     }
                   ]
@@ -462,7 +433,7 @@
                           ]
                         },
                         "val": {
-                          "u64": 3600
+                          "u64": "3600"
                         }
                       }
                     ]
@@ -481,7 +452,7 @@
             "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
             "key": {
               "ledger_key_nonce": {
-                "nonce": 801925984706572462
+                "nonce": "801925984706572462"
               }
             },
             "durability": "temporary"
@@ -496,7 +467,7 @@
                 "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
                 "key": {
                   "ledger_key_nonce": {
-                    "nonce": 801925984706572462
+                    "nonce": "801925984706572462"
                   }
                 },
                 "durability": "temporary",
@@ -514,7 +485,7 @@
             "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
             "key": {
               "ledger_key_nonce": {
-                "nonce": 1033654523790656264
+                "nonce": "1033654523790656264"
               }
             },
             "durability": "temporary"
@@ -529,7 +500,7 @@
                 "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
                 "key": {
                   "ledger_key_nonce": {
-                    "nonce": 1033654523790656264
+                    "nonce": "1033654523790656264"
                   }
                 },
                 "durability": "temporary",
@@ -547,7 +518,7 @@
             "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
             "key": {
               "ledger_key_nonce": {
-                "nonce": 4837995959683129791
+                "nonce": "4837995959683129791"
               }
             },
             "durability": "temporary"
@@ -562,7 +533,7 @@
                 "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
                 "key": {
                   "ledger_key_nonce": {
-                    "nonce": 4837995959683129791
+                    "nonce": "4837995959683129791"
                   }
                 },
                 "durability": "temporary",
@@ -580,7 +551,7 @@
             "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
             "key": {
               "ledger_key_nonce": {
-                "nonce": 5541220902715666415
+                "nonce": "5541220902715666415"
               }
             },
             "durability": "temporary"
@@ -595,7 +566,7 @@
                 "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
                 "key": {
                   "ledger_key_nonce": {
-                    "nonce": 5541220902715666415
+                    "nonce": "5541220902715666415"
                   }
                 },
                 "durability": "temporary",

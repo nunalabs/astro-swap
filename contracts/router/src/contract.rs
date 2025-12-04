@@ -1,4 +1,6 @@
-use astroswap_shared::{get_amount_in, get_amount_out, AstroSwapError, FactoryClient, PairClient};
+use astroswap_shared::{
+    get_amount_in, get_amount_out, AstroSwapError, FactoryClient, PairClient, MIN_TRADE_AMOUNT,
+};
 use soroban_sdk::{contract, contractimpl, token, Address, Env, Vec};
 
 use crate::storage::{
@@ -54,6 +56,11 @@ impl AstroSwapRouter {
         // Check deadline
         Self::check_deadline(&env, deadline)?;
 
+        // Validate minimum trade amount (dust attack prevention)
+        if amount_in < MIN_TRADE_AMOUNT {
+            return Err(AstroSwapError::MinimumNotMet);
+        }
+
         // Validate path
         Self::validate_path(&path)?;
 
@@ -105,6 +112,11 @@ impl AstroSwapRouter {
         // Check deadline
         Self::check_deadline(&env, deadline)?;
 
+        // Validate minimum trade amount (dust attack prevention)
+        if amount_out < MIN_TRADE_AMOUNT {
+            return Err(AstroSwapError::MinimumNotMet);
+        }
+
         // Validate path
         Self::validate_path(&path)?;
 
@@ -115,6 +127,11 @@ impl AstroSwapRouter {
         let required_amount = amounts.get(0).unwrap();
         if required_amount > amount_in_max {
             return Err(AstroSwapError::ExcessiveInputAmount);
+        }
+
+        // Also validate that calculated input meets minimum (double protection)
+        if required_amount < MIN_TRADE_AMOUNT {
+            return Err(AstroSwapError::MinimumNotMet);
         }
 
         // Get factory and first pair
