@@ -195,22 +195,6 @@ export function SwapCard() {
 
               <div className="flex justify-between items-center">
                 <span className="text-neutral-400 flex items-center gap-1">
-                  Slippage Tolerance
-                  <InfoTooltip
-                    content={
-                      <div className="space-y-1">
-                        <p className="font-medium">What is Slippage Tolerance?</p>
-                        <p className="text-neutral-300">Maximum price change you're willing to accept. If the price moves beyond this, your transaction will revert.</p>
-                        <p className="text-neutral-400 text-xs mt-2">Recommended: 0.5% for stable pairs, 1% for volatile pairs</p>
-                      </div>
-                    }
-                  />
-                </span>
-                <span className="font-medium">{slippageTolerance}%</span>
-              </div>
-
-              <div className="flex justify-between items-center">
-                <span className="text-neutral-400 flex items-center gap-1">
                   Minimum Received
                   <InfoTooltip
                     content={
