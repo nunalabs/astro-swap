@@ -165,10 +165,16 @@ export class AstroSwapError extends Error {
 }
 
 // Toast/Notification types
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 export interface Toast {
   id: string;
   type: 'success' | 'error' | 'warning' | 'info';
   title: string;
   description?: string;
   duration?: number;
+  action?: ToastAction; // Optional retry/action button
 }

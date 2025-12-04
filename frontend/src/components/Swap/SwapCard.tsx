@@ -1,18 +1,28 @@
-import { useState } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
+import { InfoTooltip } from '../common/Tooltip';
 import { TokenInput } from './TokenInput';
 import { SwapSettings } from './SwapSettings';
+import { SwapConfirmationModal } from './SwapConfirmationModal';
+import { ApprovalButton, ApprovalStatus } from '../common/ApprovalButton';
 import { useSwap } from '../../hooks/useSwap';
+import { useSwapApproval } from '../../hooks/useTokenApproval';
 import { useWalletStore } from '../../stores/walletStore';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { BASE_TOKENS } from '../../stores/tokenStore';
 import type { Token } from '../../types';
-import { formatPercent } from '../../lib/utils';
+import { formatPercent, parseTokenAmount } from '../../lib/utils';
+
+// Default token pair for better UX - XLM/USDC is the most common pair
+const DEFAULT_TOKEN_IN = BASE_TOKENS[0]; // XLM
+const DEFAULT_TOKEN_OUT = BASE_TOKENS[1]; // USDC
 
 export function SwapCard() {
-  const [tokenIn, setTokenIn] = useState<Token | null>(null);
-  const [tokenOut, setTokenOut] = useState<Token | null>(null);
+  const [tokenIn, setTokenIn] = useState<Token | null>(DEFAULT_TOKEN_IN);
+  const [tokenOut, setTokenOut] = useState<Token | null>(DEFAULT_TOKEN_OUT);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   const isConnected = useWalletStore((state) => state.isConnected);
   const slippageTolerance = useSettingsStore((state) => state.slippageTolerance);
@@ -24,10 +34,27 @@ export function SwapCard() {
     route,
     isLoadingQuote,
     isSwapping,
+    isSimulating,
     setAmountIn,
     swap,
     switchTokens,
   } = useSwap(tokenIn, tokenOut);
+
+  // Convert amount to token decimals for approval check
+  const amountInForApproval = useMemo(() => {
+    if (!amountIn || !tokenIn) return '0';
+    return parseTokenAmount(amountIn, tokenIn.decimals);
+  }, [amountIn, tokenIn]);
+
+  // Token approval hook
+  const {
+    status: approvalStatus,
+    needsApproval,
+    isApproving,
+    isLoadingAllowance,
+    approve,
+    approveExact,
+  } = useSwapApproval(tokenIn?.address || null, amountInForApproval);
 
   const handleSwitchTokens = () => {
     const temp = tokenIn;
@@ -36,7 +63,24 @@ export function SwapCard() {
     switchTokens();
   };
 
-  const canSwap = isConnected && tokenIn && tokenOut && parseFloat(amountIn) > 0 && parseFloat(amountOut) > 0;
+  const canSwap = isConnected && tokenIn && tokenOut && parseFloat(amountIn) > 0 && parseFloat(amountOut) > 0 && !needsApproval;
+
+  const handleSwapClick = useCallback(() => {
+    setShowConfirmModal(true);
+  }, []);
+
+  const handleConfirmSwap = useCallback(async () => {
+    await swap();
+    setShowConfirmModal(false);
+  }, [swap]);
+
+  const handleCloseConfirmModal = useCallback(() => {
+    setShowConfirmModal(false);
+  }, []);
+
+  const minimumReceived = tokenOut && parseFloat(amountOut) > 0
+    ? (parseFloat(amountOut) * (1 - slippageTolerance / 100)).toFixed(6)
+    : '0';
 
   return (
     <Card className="max-w-md mx-auto">
@@ -63,9 +107,10 @@ export function SwapCard() {
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             onClick={handleSwitchTokens}
-            className="p-2 bg-card border border-neutral-700 rounded-xl hover:border-primary transition-colors"
+            aria-label="Switch input and output tokens"
+            className="p-3 bg-card border border-neutral-700 rounded-xl hover:border-primary transition-colors min-w-[44px] min-h-[44px]"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -118,24 +163,64 @@ export function SwapCard() {
                 </div>
               )}
 
-              <div className="flex justify-between">
-                <span className="text-neutral-400">Price Impact</span>
+              <div className="flex justify-between items-center">
+                <span className="text-neutral-400 flex items-center gap-1">
+                  Price Impact
+                  <InfoTooltip
+                    content={
+                      <div className="space-y-1">
+                        <p className="font-medium">What is Price Impact?</p>
+                        <p className="text-neutral-300">The difference between the market price and the price you'll receive due to trade size. Larger trades have higher impact.</p>
+                        <p className="text-neutral-400 text-xs mt-2">
+                          {"< 2%: Low | 2-5%: Medium | > 5%: High (caution)"}
+                        </p>
+                      </div>
+                    }
+                  />
+                </span>
                 <span
-                  className={`font-medium ${
-                    priceImpact > 5 ? 'text-red-500' : priceImpact > 2 ? 'text-primary' : 'text-green'
+                  className={`font-medium flex items-center gap-1 ${
+                    priceImpact > 5 ? 'text-red-300' : priceImpact > 2 ? 'text-primary' : 'text-green'
                   }`}
                 >
+                  {priceImpact > 5 && (
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                  )}
                   {formatPercent(priceImpact, 2)}
+                  {priceImpact > 5 && <span className="sr-only">(High price impact warning)</span>}
                 </span>
               </div>
 
-              <div className="flex justify-between">
-                <span className="text-neutral-400">Slippage Tolerance</span>
+              <div className="flex justify-between items-center">
+                <span className="text-neutral-400 flex items-center gap-1">
+                  Slippage Tolerance
+                  <InfoTooltip
+                    content={
+                      <div className="space-y-1">
+                        <p className="font-medium">What is Slippage Tolerance?</p>
+                        <p className="text-neutral-300">Maximum price change you're willing to accept. If the price moves beyond this, your transaction will revert.</p>
+                        <p className="text-neutral-400 text-xs mt-2">Recommended: 0.5% for stable pairs, 1% for volatile pairs</p>
+                      </div>
+                    }
+                  />
+                </span>
                 <span className="font-medium">{slippageTolerance}%</span>
               </div>
 
-              <div className="flex justify-between">
-                <span className="text-neutral-400">Minimum Received</span>
+              <div className="flex justify-between items-center">
+                <span className="text-neutral-400 flex items-center gap-1">
+                  Minimum Received
+                  <InfoTooltip
+                    content={
+                      <div className="space-y-1">
+                        <p className="font-medium">Minimum Received</p>
+                        <p className="text-neutral-300">The least amount you'll receive after accounting for slippage. Transaction reverts if you'd receive less.</p>
+                      </div>
+                    }
+                  />
+                </span>
                 <span className="font-medium">
                   {(parseFloat(amountOut) * (1 - slippageTolerance / 100)).toFixed(6)} {tokenOut.symbol}
                 </span>
@@ -145,7 +230,14 @@ export function SwapCard() {
         </div>
       )}
 
-      {/* Swap Button */}
+      {/* Token Approval Status */}
+      {isConnected && tokenIn && parseFloat(amountIn) > 0 && (
+        <div className="mb-4">
+          <ApprovalStatus status={approvalStatus} tokenSymbol={tokenIn.symbol} />
+        </div>
+      )}
+
+      {/* Approval / Swap Button */}
       {!isConnected ? (
         <Button fullWidth disabled>
           Connect Wallet
@@ -158,9 +250,24 @@ export function SwapCard() {
         <Button fullWidth disabled>
           Enter Amount
         </Button>
+      ) : needsApproval ? (
+        <ApprovalButton
+          tokenSymbol={tokenIn.symbol}
+          needsApproval={needsApproval}
+          isApproving={isApproving}
+          isLoadingAllowance={isLoadingAllowance}
+          onApprove={approve}
+          onApproveExact={approveExact}
+        />
       ) : (
-        <Button onClick={swap} fullWidth isLoading={isSwapping} disabled={!canSwap}>
-          {priceImpact > 5 ? 'Swap Anyway' : 'Swap'}
+        <Button
+          onClick={handleSwapClick}
+          fullWidth
+          isLoading={isSwapping || isSimulating}
+          disabled={!canSwap}
+          variant={priceImpact > 5 ? 'danger' : 'primary'}
+        >
+          {isSimulating ? 'Validating...' : priceImpact > 5 ? 'Swap Anyway' : 'Swap'}
         </Button>
       )}
 
@@ -181,6 +288,24 @@ export function SwapCard() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Swap Confirmation Modal */}
+      {tokenIn && tokenOut && (
+        <SwapConfirmationModal
+          isOpen={showConfirmModal}
+          onClose={handleCloseConfirmModal}
+          onConfirm={handleConfirmSwap}
+          tokenIn={tokenIn}
+          tokenOut={tokenOut}
+          amountIn={amountIn}
+          amountOut={amountOut}
+          priceImpact={priceImpact}
+          slippageTolerance={slippageTolerance}
+          minimumReceived={minimumReceived}
+          route={route}
+          isLoading={isSwapping}
+        />
       )}
     </Card>
   );

@@ -34,7 +34,9 @@ export function useTokenBalance(token: Token | null) {
     },
     enabled: !!token && !!address,
     staleTime: 10000, // 10 seconds
-    refetchInterval: 30000, // Refresh every 30 seconds
+    // PERFORMANCE: Removed refetchInterval to reduce RPC calls
+    // Balances are invalidated after transactions via queryClient.invalidateQueries
+    refetchOnWindowFocus: true, // Refresh when user returns to tab
   });
 
   // Update the token store when balance changes
@@ -50,8 +52,35 @@ export function useTokenBalance(token: Token | null) {
   };
 }
 
+// PERFORMANCE: Rate-limited batch processing to avoid overwhelming RPC
+const BATCH_SIZE = 5; // Process 5 tokens at a time
+const BATCH_DELAY = 100; // 100ms between batches
+
+async function processBatch<T, R>(
+  items: T[],
+  processor: (item: T) => Promise<R>,
+  batchSize: number = BATCH_SIZE,
+  delayMs: number = BATCH_DELAY
+): Promise<R[]> {
+  const results: R[] = [];
+
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    const batchResults = await Promise.all(batch.map(processor));
+    results.push(...batchResults);
+
+    // Add delay between batches (except for the last one)
+    if (i + batchSize < items.length) {
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+
+  return results;
+}
+
 /**
  * Hook to fetch all token balances for connected wallet
+ * Uses rate-limited batching to avoid overwhelming the RPC
  */
 export function useAllTokenBalances() {
   const address = useWalletStore((state) => state.address);
@@ -65,20 +94,20 @@ export function useAllTokenBalances() {
 
       const balances: Record<string, string> = {};
 
-      await Promise.all(
-        tokens.map(async (token) => {
-          try {
-            if (token.address === NATIVE_XLM_SAC || token.symbol === 'XLM') {
-              balances[token.address] = await getAccountBalance(address);
-            } else {
-              balances[token.address] = await getTokenBalance(address, token.address);
-            }
-          } catch (error) {
-            console.error(`Error fetching balance for ${token.symbol}:`, error);
-            balances[token.address] = '0';
+      // PERFORMANCE: Process tokens in rate-limited batches
+      await processBatch(tokens, async (token) => {
+        try {
+          if (token.address === NATIVE_XLM_SAC || token.symbol === 'XLM') {
+            balances[token.address] = await getAccountBalance(address);
+          } else {
+            balances[token.address] = await getTokenBalance(address, token.address);
           }
-        })
-      );
+        } catch (error) {
+          console.error(`Error fetching balance for ${token.symbol}:`, error);
+          balances[token.address] = '0';
+        }
+        return balances[token.address];
+      });
 
       // Update all balances in the store
       Object.entries(balances).forEach(([tokenAddress, balance]) => {
@@ -89,7 +118,9 @@ export function useAllTokenBalances() {
     },
     enabled: !!address && tokens.length > 0,
     staleTime: 15000,
-    refetchInterval: 60000,
+    // PERFORMANCE: Removed refetchInterval to reduce RPC calls
+    // Call refetch() manually after transactions complete
+    refetchOnWindowFocus: true,
   });
 
   return {

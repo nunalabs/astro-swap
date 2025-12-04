@@ -9,6 +9,7 @@ pub enum DataKey {
     Admin,
     Initialized,
     Paused,
+    Locked, // Reentrancy guard
     PoolCount,
     RewardToken,
 
@@ -55,6 +56,19 @@ pub fn is_paused(env: &Env) -> bool {
 /// Set paused state
 pub fn set_paused(env: &Env, paused: bool) {
     env.storage().instance().set(&DataKey::Paused, &paused);
+}
+
+/// Check if contract is locked (reentrancy guard)
+pub fn is_locked(env: &Env) -> bool {
+    env.storage()
+        .instance()
+        .get::<DataKey, bool>(&DataKey::Locked)
+        .unwrap_or(false)
+}
+
+/// Set lock state (reentrancy guard)
+pub fn set_locked(env: &Env, locked: bool) {
+    env.storage().instance().set(&DataKey::Locked, &locked);
 }
 
 /// Get the total number of pools

@@ -7,8 +7,8 @@ use soroban_sdk::{contract, contractimpl, token, Address, Env, String};
 
 use crate::storage::{
     extend_instance_ttl, get_balance, get_factory, get_fee_bps, get_k_last, get_reserves,
-    get_token_0, get_token_1, get_total_supply, is_initialized, is_locked, set_factory,
-    set_fee_bps, set_initialized, set_k_last, set_locked, set_reserves, set_token_0, set_token_1,
+    get_token_0, get_token_1, get_total_supply, is_initialized, is_locked, is_paused, set_factory,
+    set_fee_bps, set_initialized, set_k_last, set_locked, set_paused, set_reserves, set_token_0, set_token_1,
 };
 
 use crate::token as lp_token;
@@ -63,6 +63,37 @@ impl AstroSwapPair {
         set_locked(env, false);
     }
 
+    /// Verify contract is not paused
+    fn require_not_paused(env: &Env) -> Result<(), AstroSwapError> {
+        if is_paused(env) {
+            return Err(AstroSwapError::ContractPaused);
+        }
+        Ok(())
+    }
+
+    /// Verify caller is factory (for admin functions)
+    fn require_factory(env: &Env) -> Result<(), AstroSwapError> {
+        let factory = get_factory(env);
+        factory.require_auth();
+        Ok(())
+    }
+
+    // ==================== Admin Functions ====================
+
+    /// Pause or unpause the pair contract
+    /// Only factory can call (which requires admin auth)
+    pub fn set_paused(env: Env, paused: bool) -> Result<(), AstroSwapError> {
+        Self::require_factory(&env)?;
+        set_paused(&env, paused);
+        extend_instance_ttl(&env);
+        Ok(())
+    }
+
+    /// Check if the contract is paused
+    pub fn is_paused(env: Env) -> bool {
+        is_paused(&env)
+    }
+
     /// Deposit liquidity and receive LP tokens
     ///
     /// # Arguments
@@ -74,6 +105,9 @@ impl AstroSwapPair {
     ///
     /// # Returns
     /// * Tuple of (amount_0_used, amount_1_used, shares_minted)
+    ///
+    /// # Security
+    /// Uses reentrancy guard to prevent flash loan attacks
     pub fn deposit(
         env: Env,
         user: Address,
@@ -82,9 +116,16 @@ impl AstroSwapPair {
         amount_0_min: i128,
         amount_1_min: i128,
     ) -> Result<(i128, i128, i128), AstroSwapError> {
+        // Check pause status first
+        Self::require_not_paused(&env)?;
+
+        // Reentrancy guard
+        Self::acquire_lock(&env)?;
+
         user.require_auth();
 
         if amount_0_desired <= 0 || amount_1_desired <= 0 {
+            Self::release_lock(&env);
             return Err(AstroSwapError::InvalidAmount);
         }
 
@@ -159,6 +200,9 @@ impl AstroSwapPair {
 
         extend_instance_ttl(&env);
 
+        // Release reentrancy lock
+        Self::release_lock(&env);
+
         Ok((amount_0, amount_1, shares))
     }
 
@@ -172,6 +216,9 @@ impl AstroSwapPair {
     ///
     /// # Returns
     /// * Tuple of (amount_0_received, amount_1_received)
+    ///
+    /// # Security
+    /// Uses reentrancy guard to prevent flash loan attacks
     pub fn withdraw(
         env: Env,
         user: Address,
@@ -179,14 +226,22 @@ impl AstroSwapPair {
         amount_0_min: i128,
         amount_1_min: i128,
     ) -> Result<(i128, i128), AstroSwapError> {
+        // Check pause status first
+        Self::require_not_paused(&env)?;
+
+        // Reentrancy guard
+        Self::acquire_lock(&env)?;
+
         user.require_auth();
 
         if shares <= 0 {
+            Self::release_lock(&env);
             return Err(AstroSwapError::InvalidAmount);
         }
 
         let user_balance = get_balance(&env, &user);
         if user_balance < shares {
+            Self::release_lock(&env);
             return Err(AstroSwapError::InsufficientBalance);
         }
 
@@ -199,6 +254,7 @@ impl AstroSwapPair {
 
         // Check minimums (slippage protection)
         if amount_0 < amount_0_min || amount_1 < amount_1_min {
+            Self::release_lock(&env);
             return Err(AstroSwapError::MinimumNotMet);
         }
 
@@ -235,6 +291,9 @@ impl AstroSwapPair {
 
         extend_instance_ttl(&env);
 
+        // Release reentrancy lock
+        Self::release_lock(&env);
+
         Ok((amount_0, amount_1))
     }
 
@@ -248,6 +307,9 @@ impl AstroSwapPair {
     ///
     /// # Returns
     /// * Amount of output token received
+    ///
+    /// # Security
+    /// Uses reentrancy guard to prevent flash loan attacks
     pub fn swap(
         env: Env,
         user: Address,
@@ -255,9 +317,16 @@ impl AstroSwapPair {
         amount_in: i128,
         min_out: i128,
     ) -> Result<i128, AstroSwapError> {
+        // Check pause status first
+        Self::require_not_paused(&env)?;
+
+        // Reentrancy guard
+        Self::acquire_lock(&env)?;
+
         user.require_auth();
 
         if amount_in <= 0 {
+            Self::release_lock(&env);
             return Err(AstroSwapError::InvalidAmount);
         }
 
@@ -272,15 +341,23 @@ impl AstroSwapPair {
             let (r0, r1) = get_reserves(&env);
             (r1, r0, token_0.clone(), false)
         } else {
+            Self::release_lock(&env);
             return Err(AstroSwapError::InvalidToken);
         };
 
         // Calculate output amount
         let fee_bps = get_fee_bps(&env);
-        let amount_out = get_amount_out(amount_in, reserve_in, reserve_out, fee_bps)?;
+        let amount_out = match get_amount_out(amount_in, reserve_in, reserve_out, fee_bps) {
+            Ok(out) => out,
+            Err(e) => {
+                Self::release_lock(&env);
+                return Err(e);
+            }
+        };
 
         // Check slippage
         if amount_out < min_out {
+            Self::release_lock(&env);
             return Err(AstroSwapError::SlippageExceeded);
         }
 
@@ -304,6 +381,7 @@ impl AstroSwapPair {
         let k_new = new_reserve_0 * new_reserve_1;
         let k_old = reserve_in * reserve_out;
         if k_new < k_old {
+            Self::release_lock(&env);
             return Err(AstroSwapError::InvalidAmount);
         }
 
@@ -311,6 +389,9 @@ impl AstroSwapPair {
         emit_swap(&env, &user, &token_in, &token_out, amount_in, amount_out);
 
         extend_instance_ttl(&env);
+
+        // Release reentrancy lock
+        Self::release_lock(&env);
 
         Ok(amount_out)
     }
@@ -325,12 +406,21 @@ impl AstroSwapPair {
     ///
     /// # Returns
     /// * (amount_in, amount_out) - Actual amounts swapped
+    ///
+    /// # Security
+    /// Uses reentrancy guard to prevent flash loan attacks
     pub fn swap_from_balance(
         env: Env,
         to: Address,
         token_in: Address,
         min_out: i128,
     ) -> Result<(i128, i128), AstroSwapError> {
+        // Check pause status first
+        Self::require_not_paused(&env)?;
+
+        // Reentrancy guard
+        Self::acquire_lock(&env)?;
+
         let token_0 = get_token_0(&env);
         let token_1 = get_token_1(&env);
         let (reserve_0, reserve_1) = get_reserves(&env);
@@ -345,25 +435,35 @@ impl AstroSwapPair {
         let (amount_in, reserve_in, reserve_out, token_out, is_token_0_in) = if token_in == token_0 {
             let amount_in = balance_0 - reserve_0;
             if amount_in <= 0 {
+                Self::release_lock(&env);
                 return Err(AstroSwapError::InvalidAmount);
             }
             (amount_in, reserve_0, reserve_1, token_1.clone(), true)
         } else if token_in == token_1 {
             let amount_in = balance_1 - reserve_1;
             if amount_in <= 0 {
+                Self::release_lock(&env);
                 return Err(AstroSwapError::InvalidAmount);
             }
             (amount_in, reserve_1, reserve_0, token_0.clone(), false)
         } else {
+            Self::release_lock(&env);
             return Err(AstroSwapError::InvalidToken);
         };
 
         // Calculate output amount
         let fee_bps = get_fee_bps(&env);
-        let amount_out = get_amount_out(amount_in, reserve_in, reserve_out, fee_bps)?;
+        let amount_out = match get_amount_out(amount_in, reserve_in, reserve_out, fee_bps) {
+            Ok(out) => out,
+            Err(e) => {
+                Self::release_lock(&env);
+                return Err(e);
+            }
+        };
 
         // Check slippage
         if amount_out < min_out {
+            Self::release_lock(&env);
             return Err(AstroSwapError::SlippageExceeded);
         }
 
@@ -388,6 +488,7 @@ impl AstroSwapPair {
         let k_new = new_balance_0 * new_balance_1;
         let k_old = reserve_0 * reserve_1;
         if k_new < k_old {
+            Self::release_lock(&env);
             return Err(AstroSwapError::InvalidAmount);
         }
 
@@ -395,6 +496,9 @@ impl AstroSwapPair {
         emit_swap(&env, &to, &token_in, &token_out, amount_in, amount_out);
 
         extend_instance_ttl(&env);
+
+        // Release reentrancy lock
+        Self::release_lock(&env);
 
         Ok((amount_in, amount_out))
     }
@@ -421,13 +525,16 @@ impl AstroSwapPair {
     /// Transfer excess tokens to a recipient
     /// SECURITY: Only callable by factory contract to prevent exploitation
     /// This function transfers the difference between actual balance and reserves
+    ///
+    /// In UniswapV2, skim() is used to recover tokens sent to the pair by mistake.
+    /// We restrict this to factory only to prevent exploitation attacks where
+    /// an attacker could front-run a deposit to extract the tokens.
     pub fn skim(env: Env, to: Address) -> Result<(), AstroSwapError> {
-        // Security: Only factory can call skim to prevent exploitation
+        // SECURITY FIX: Only factory can call skim
+        // This prevents exploitation where anyone could extract excess tokens
+        // that may exist temporarily during deposit/swap operations
         let factory = get_factory(&env);
-        if to != factory {
-            // Require the recipient to authorize (prevents arbitrary extraction)
-            to.require_auth();
-        }
+        factory.require_auth();
 
         Self::acquire_lock(&env)?;
 

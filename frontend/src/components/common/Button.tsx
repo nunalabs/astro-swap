@@ -5,7 +5,7 @@ import { cn } from '../../lib/utils';
 type MotionButtonProps = HTMLMotionProps<'button'>;
 
 interface ButtonProps extends Omit<MotionButtonProps, 'ref'> {
-  variant?: 'primary' | 'secondary' | 'outline' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
   size?: 'sm' | 'md' | 'lg';
   isLoading?: boolean;
   fullWidth?: boolean;
@@ -32,6 +32,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       secondary: 'bg-card text-neutral-200 border border-neutral-700 hover:border-primary hover:shadow-card',
       outline: 'bg-transparent border border-primary text-primary hover:bg-primary hover:text-white',
       ghost: 'bg-transparent text-neutral-200 hover:bg-neutral-800',
+      danger: 'bg-red-600 text-white hover:bg-red-700 hover:shadow-lg hover:scale-105 active:scale-95',
     };
 
     const sizes = {

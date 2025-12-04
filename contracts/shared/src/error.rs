@@ -13,6 +13,7 @@ pub enum AstroSwapError {
     Overflow = 5,
     Underflow = 6,
     DivisionByZero = 7,
+    Reentrancy = 8,
 
     // Token errors (100-199)
     InvalidToken = 100,
@@ -65,4 +66,5 @@ pub enum AstroSwapError {
     AlreadyGraduated = 701,
     InvalidLaunchpad = 702,
     GraduationFailed = 703,
+    InvalidPair = 704,
 }

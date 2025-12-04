@@ -1,0 +1,62 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+indexer/node_modules/
+sdk/node_modules/
+
+# Rust build artifacts
+target/
+contracts/*/target/
+
+# Git
+.git/
+
+# IDE
+.idea/
+.vscode/
+
+# Tests
+tests/
+**/*.test.ts
+**/*.spec.ts
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Development files
+.env
+.env.local
+.env.development
+.env.production
+*.log
+
+# SDK (not needed for frontend)
+sdk/
+
+# Indexer (separate deployment)
+indexer/
+
+# Contract source (already compiled)
+contracts/
+
+# Packages
+packages/
+
+# Scripts
+scripts/
+
+# Config files not needed for frontend
+Cargo.toml
+Cargo.lock
+Makefile
+docker-compose.yml
+Dockerfile
+
+# Keep frontend lockfile for faster installs
+# pnpm-lock.yaml is needed for reproducible builds
+
+# Build artifacts we don't need
+*.wasm
+*.optimized.wasm

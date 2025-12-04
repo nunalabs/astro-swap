@@ -7,7 +7,8 @@ use soroban_sdk::{contract, contractimpl, token, Address, Env};
 use crate::storage::{
     extend_instance_ttl, extend_pool_ttl, extend_user_stake_ttl, get_admin, get_pool,
     get_pool_count, get_reward_token, get_user_stake, increment_pool_count, is_initialized,
-    is_paused, set_admin, set_initialized, set_paused, set_pool, set_reward_token, set_user_stake,
+    is_locked, is_paused, set_admin, set_initialized, set_locked, set_paused, set_pool,
+    set_reward_token, set_user_stake,
 };
 
 /// Precision for reward calculations
@@ -81,12 +82,31 @@ impl AstroSwapStaking {
         Ok(pool_id)
     }
 
+    // ==================== Reentrancy Guard ====================
+
+    /// Internal function to acquire reentrancy lock
+    fn acquire_lock(env: &Env) -> Result<(), AstroSwapError> {
+        if is_locked(env) {
+            return Err(AstroSwapError::InvalidArgument); // Reentrancy detected
+        }
+        set_locked(env, true);
+        Ok(())
+    }
+
+    /// Internal function to release reentrancy lock
+    fn release_lock(env: &Env) {
+        set_locked(env, false);
+    }
+
     /// Stake LP tokens in a pool
     ///
     /// # Arguments
     /// * `user` - User address
     /// * `pool_id` - Pool to stake in
     /// * `amount` - Amount of LP tokens to stake
+    ///
+    /// # Security
+    /// Uses reentrancy guard to prevent flash loan attacks
     pub fn stake(
         env: Env,
         user: Address,
@@ -95,8 +115,10 @@ impl AstroSwapStaking {
     ) -> Result<(), AstroSwapError> {
         user.require_auth();
         Self::require_not_paused(&env)?;
+        Self::acquire_lock(&env)?;
 
         if amount <= 0 {
+            Self::release_lock(&env);
             return Err(AstroSwapError::InvalidAmount);
         }
 
@@ -152,6 +174,8 @@ impl AstroSwapStaking {
         extend_pool_ttl(&env, pool_id);
         extend_user_stake_ttl(&env, &user, pool_id);
 
+        Self::release_lock(&env);
+
         Ok(())
     }
 
@@ -161,6 +185,9 @@ impl AstroSwapStaking {
     /// * `user` - User address
     /// * `pool_id` - Pool to unstake from
     /// * `amount` - Amount of LP tokens to unstake
+    ///
+    /// # Security
+    /// Uses reentrancy guard to prevent flash loan attacks
     pub fn unstake(
         env: Env,
         user: Address,
@@ -168,16 +195,30 @@ impl AstroSwapStaking {
         amount: i128,
     ) -> Result<(), AstroSwapError> {
         user.require_auth();
+        Self::acquire_lock(&env)?;
 
         if amount <= 0 {
+            Self::release_lock(&env);
             return Err(AstroSwapError::InvalidAmount);
         }
 
-        let mut pool = get_pool(&env, pool_id).ok_or(AstroSwapError::StakingPoolNotFound)?;
-        let mut user_stake =
-            get_user_stake(&env, &user, pool_id).ok_or(AstroSwapError::StakeNotFound)?;
+        let mut pool = match get_pool(&env, pool_id) {
+            Some(p) => p,
+            None => {
+                Self::release_lock(&env);
+                return Err(AstroSwapError::StakingPoolNotFound);
+            }
+        };
+        let mut user_stake = match get_user_stake(&env, &user, pool_id) {
+            Some(s) => s,
+            None => {
+                Self::release_lock(&env);
+                return Err(AstroSwapError::StakeNotFound);
+            }
+        };
 
         if user_stake.amount < amount {
+            Self::release_lock(&env);
             return Err(AstroSwapError::InsufficientStake);
         }
 
@@ -228,16 +269,33 @@ impl AstroSwapStaking {
         extend_pool_ttl(&env, pool_id);
         extend_user_stake_ttl(&env, &user, pool_id);
 
+        Self::release_lock(&env);
+
         Ok(())
     }
 
     /// Claim pending rewards without unstaking
+    ///
+    /// # Security
+    /// Uses reentrancy guard to prevent flash loan attacks
     pub fn claim_rewards(env: Env, user: Address, pool_id: u32) -> Result<i128, AstroSwapError> {
         user.require_auth();
+        Self::acquire_lock(&env)?;
 
-        let mut pool = get_pool(&env, pool_id).ok_or(AstroSwapError::StakingPoolNotFound)?;
-        let mut user_stake =
-            get_user_stake(&env, &user, pool_id).ok_or(AstroSwapError::StakeNotFound)?;
+        let mut pool = match get_pool(&env, pool_id) {
+            Some(p) => p,
+            None => {
+                Self::release_lock(&env);
+                return Err(AstroSwapError::StakingPoolNotFound);
+            }
+        };
+        let mut user_stake = match get_user_stake(&env, &user, pool_id) {
+            Some(s) => s,
+            None => {
+                Self::release_lock(&env);
+                return Err(AstroSwapError::StakeNotFound);
+            }
+        };
 
         // Update pool rewards
         Self::update_pool(&env, &mut pool)?;
@@ -246,6 +304,7 @@ impl AstroSwapStaking {
         let pending = Self::calculate_pending_rewards(&pool, &user_stake)?;
 
         if pending == 0 {
+            Self::release_lock(&env);
             return Err(AstroSwapError::NoRewardsAvailable);
         }
 
@@ -275,6 +334,8 @@ impl AstroSwapStaking {
         extend_instance_ttl(&env);
         extend_pool_ttl(&env, pool_id);
         extend_user_stake_ttl(&env, &user, pool_id);
+
+        Self::release_lock(&env);
 
         Ok(boosted_reward)
     }

@@ -251,6 +251,21 @@ impl<'a> PairClient<'a> {
             Vec::new(self.env),
         )
     }
+
+    /// Burn LP tokens
+    /// This permanently removes LP tokens from circulation
+    /// Used by bridge to lock liquidity during token graduation
+    pub fn burn(&self, from: &Address, amount: i128) -> Result<(), AstroSwapError> {
+        let _: () = self.env.invoke_contract(
+            &self.contract_id,
+            &Symbol::new(self.env, "burn"),
+            Vec::from_array(
+                self.env,
+                [from.to_val(), amount.into_val(self.env)],
+            ),
+        );
+        Ok(())
+    }
 }
 
 /// Staking contract interface

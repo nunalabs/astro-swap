@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useCallback, memo, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Modal } from './Modal';
 import { AddTokenModal } from './AddTokenModal';
@@ -7,16 +7,23 @@ import { useWalletStore } from '../../stores/walletStore';
 import type { Token } from '../../types';
 import { cn } from '../../lib/utils';
 
+// PERFORMANCE: Virtual scrolling - only render visible items
+const INITIAL_VISIBLE_COUNT = 20;
+const LOAD_MORE_COUNT = 20;
+
 interface TokenSelectorProps {
   selectedToken: Token | null;
   onSelect: (token: Token) => void;
   excludeTokens?: string[];
 }
 
-export function TokenSelector({ selectedToken, onSelect, excludeTokens = [] }: TokenSelectorProps) {
+export const TokenSelector = memo(function TokenSelector({ selectedToken, onSelect, excludeTokens = [] }: TokenSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [showAddToken, setShowAddToken] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
+  const listRef = useRef<HTMLDivElement>(null);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
 
   const tokens = useTokenStore((state) => state.tokens);
   const favoriteTokens = useTokenStore((state) => state.favoriteTokens);
@@ -26,46 +33,99 @@ export function TokenSelector({ selectedToken, onSelect, excludeTokens = [] }: T
   const indexTokensFromChain = useTokenStore((state) => state.indexTokensFromChain);
   const walletAddress = useWalletStore((state) => state.address);
 
-  const filteredTokens = tokens.filter((token) => {
-    if (excludeTokens.includes(token.address)) return false;
+  // Memoize filtered tokens to avoid recalculating on every render
+  const filteredTokens = useMemo(() => {
+    return tokens.filter((token) => {
+      if (excludeTokens.includes(token.address)) return false;
 
-    if (!searchQuery) return true;
+      if (!searchQuery) return true;
 
-    const query = searchQuery.toLowerCase();
-    return (
-      token.symbol.toLowerCase().includes(query) ||
-      token.name.toLowerCase().includes(query) ||
-      token.address.toLowerCase().includes(query)
+      const query = searchQuery.toLowerCase();
+      return (
+        token.symbol.toLowerCase().includes(query) ||
+        token.name.toLowerCase().includes(query) ||
+        token.address.toLowerCase().includes(query)
+      );
+    });
+  }, [tokens, excludeTokens, searchQuery]);
+
+  // Memoize favorites and regular lists
+  const { favoriteList, regularList } = useMemo(() => ({
+    favoriteList: filteredTokens.filter((token) =>
+      favoriteTokens.includes(token.address)
+    ),
+    regularList: filteredTokens.filter(
+      (token) => !favoriteTokens.includes(token.address)
+    ),
+  }), [filteredTokens, favoriteTokens]);
+
+  // PERFORMANCE: Slice the regular list for virtual scrolling
+  const visibleRegularList = useMemo(() => {
+    return regularList.slice(0, visibleCount);
+  }, [regularList, visibleCount]);
+
+  const hasMoreTokens = regularList.length > visibleCount;
+
+  // Reset visible count when search changes or modal opens
+  useEffect(() => {
+    setVisibleCount(INITIAL_VISIBLE_COUNT);
+  }, [searchQuery, isOpen]);
+
+  // Intersection Observer for infinite scroll
+  useEffect(() => {
+    if (!loadMoreRef.current || !hasMoreTokens) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleCount((prev) => prev + LOAD_MORE_COUNT);
+        }
+      },
+      { threshold: 0.1, root: listRef.current }
     );
-  });
 
-  const favoriteList = filteredTokens.filter((token) =>
-    favoriteTokens.includes(token.address)
-  );
+    observer.observe(loadMoreRef.current);
 
-  const regularList = filteredTokens.filter(
-    (token) => !favoriteTokens.includes(token.address)
-  );
+    return () => observer.disconnect();
+  }, [hasMoreTokens]);
 
-  const handleSelect = (token: Token) => {
+  const handleSelect = useCallback((token: Token) => {
     onSelect(token);
     setIsOpen(false);
     setSearchQuery('');
-  };
+  }, [onSelect]);
+
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+  }, []);
+
+  const handleRefreshTokens = useCallback(() => {
+    if (walletAddress) {
+      indexTokensFromChain(walletAddress);
+    }
+  }, [walletAddress, indexTokensFromChain]);
+
+  const handleOpenAddToken = useCallback(() => {
+    setIsOpen(false);
+    setShowAddToken(true);
+  }, []);
 
   return (
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+        aria-label={selectedToken ? `Selected token: ${selectedToken.symbol}. Click to change` : 'Select a token'}
+        aria-haspopup="dialog"
+        className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors min-h-[44px]"
       >
         {selectedToken ? (
           <>
             {selectedToken.logoURI && (
               <img
                 src={selectedToken.logoURI}
-                alt={selectedToken.symbol}
+                alt=""
                 className="w-6 h-6 rounded-full"
+                loading="lazy"
               />
             )}
             <span className="font-semibold">{selectedToken.symbol}</span>
@@ -73,7 +133,7 @@ export function TokenSelector({ selectedToken, onSelect, excludeTokens = [] }: T
         ) : (
           <span className="text-neutral-400">Select token</span>
         )}
-        <svg className="w-4 h-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className="w-4 h-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
@@ -85,22 +145,24 @@ export function TokenSelector({ selectedToken, onSelect, excludeTokens = [] }: T
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={handleSearchChange}
               placeholder="Search by name, symbol, or address"
               className="input flex-1"
               autoFocus
+              aria-label="Search tokens"
             />
             <button
-              onClick={() => walletAddress && indexTokensFromChain(walletAddress)}
+              onClick={handleRefreshTokens}
               disabled={isIndexing || !walletAddress}
-              className="p-3 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors disabled:opacity-50"
-              title="Refresh token list from blockchain"
+              className="p-3 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors disabled:opacity-50 min-w-[44px] min-h-[44px]"
+              aria-label="Refresh token list from blockchain"
             >
               <svg
                 className={cn('w-5 h-5', isIndexing && 'animate-spin')}
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
+                aria-hidden="true"
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
@@ -120,9 +182,9 @@ export function TokenSelector({ selectedToken, onSelect, excludeTokens = [] }: T
             {tokens.length} tokens available {indexedTokens.length > 0 && `(${indexedTokens.length} from pools)`}
           </div>
 
-          {/* Token List */}
-          <div className="space-y-2 max-h-96 overflow-y-auto">
-            {/* Favorites */}
+          {/* Token List - PERFORMANCE: Virtual scrolling with intersection observer */}
+          <div ref={listRef} className="space-y-2 max-h-96 overflow-y-auto">
+            {/* Favorites - always show all (usually small list) */}
             {favoriteList.length > 0 && (
               <div>
                 <h3 className="text-sm font-semibold text-neutral-400 mb-2">Favorites</h3>
@@ -140,14 +202,14 @@ export function TokenSelector({ selectedToken, onSelect, excludeTokens = [] }: T
               </div>
             )}
 
-            {/* All Tokens */}
-            {regularList.length > 0 && (
+            {/* All Tokens - virtualized */}
+            {visibleRegularList.length > 0 && (
               <div>
                 {favoriteList.length > 0 && (
                   <h3 className="text-sm font-semibold text-neutral-400 mb-2 mt-4">All Tokens</h3>
                 )}
                 <div className="space-y-1">
-                  {regularList.map((token) => (
+                  {visibleRegularList.map((token) => (
                     <TokenItem
                       key={token.address}
                       token={token}
@@ -157,6 +219,16 @@ export function TokenSelector({ selectedToken, onSelect, excludeTokens = [] }: T
                     />
                   ))}
                 </div>
+
+                {/* Load more trigger - intersection observer watches this */}
+                {hasMoreTokens && (
+                  <div ref={loadMoreRef} className="flex items-center justify-center py-4">
+                    <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    <span className="ml-2 text-sm text-neutral-400">
+                      Loading more... ({visibleCount}/{regularList.length})
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -168,10 +240,7 @@ export function TokenSelector({ selectedToken, onSelect, excludeTokens = [] }: T
 
             {/* Import Token Button */}
             <button
-              onClick={() => {
-                setIsOpen(false);
-                setShowAddToken(true);
-              }}
+              onClick={handleOpenAddToken}
               className="w-full mt-4 p-3 border border-dashed border-neutral-600 rounded-xl text-neutral-400 hover:text-white hover:border-primary transition-colors flex items-center justify-center gap-2"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -190,7 +259,7 @@ export function TokenSelector({ selectedToken, onSelect, excludeTokens = [] }: T
       />
     </>
   );
-}
+});
 
 interface TokenItemProps {
   token: Token;
@@ -199,50 +268,69 @@ interface TokenItemProps {
   onToggleFavorite: (address: string) => void;
 }
 
-function TokenItem({ token, isFavorite, onSelect, onToggleFavorite }: TokenItemProps) {
+const TokenItem = memo(function TokenItem({ token, isFavorite, onSelect, onToggleFavorite }: TokenItemProps) {
+  const handleClick = useCallback(() => {
+    onSelect(token);
+  }, [onSelect, token]);
+
+  const handleToggleFavorite = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggleFavorite(token.address);
+  }, [onToggleFavorite, token.address]);
+
   return (
-    <motion.div
-      whileHover={{ scale: 1.02 }}
-      className={cn(
-        'flex items-center justify-between p-3 rounded-xl cursor-pointer transition-colors',
-        'hover:bg-neutral-800'
-      )}
-    >
-      <div className="flex items-center gap-3 flex-1" onClick={() => onSelect(token)}>
+    <div className="flex items-center gap-2">
+      {/* Main token selection button - semantic and accessible */}
+      <motion.button
+        whileHover={{ scale: 1.01 }}
+        whileTap={{ scale: 0.99 }}
+        onClick={handleClick}
+        aria-label={`Select ${token.symbol} (${token.name})`}
+        className={cn(
+          'flex items-center gap-3 flex-1 p-3 rounded-xl transition-colors text-left',
+          'hover:bg-neutral-800 focus-visible:ring-2 focus-visible:ring-primary'
+        )}
+      >
         {token.logoURI ? (
-          <img src={token.logoURI} alt={token.symbol} className="w-8 h-8 rounded-full" />
+          <img
+            src={token.logoURI}
+            alt=""
+            className="w-8 h-8 rounded-full"
+            loading="lazy"
+          />
         ) : (
-          <div className="w-8 h-8 rounded-full bg-neutral-700 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-full bg-neutral-700 flex items-center justify-center" aria-hidden="true">
             <span className="text-xs font-semibold">{token.symbol.slice(0, 2)}</span>
           </div>
         )}
 
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-semibold">{token.symbol}</span>
           </div>
-          <span className="text-sm text-neutral-400">{token.name}</span>
+          <span className="text-sm text-neutral-400 truncate block">{token.name}</span>
         </div>
 
         {token.balance && (
-          <div className="text-right">
+          <div className="text-right flex-shrink-0">
             <div className="font-mono text-sm">{token.balance}</div>
           </div>
         )}
-      </div>
+      </motion.button>
 
+      {/* Favorite toggle button */}
       <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggleFavorite(token.address);
-        }}
-        className="ml-2 p-1 hover:bg-neutral-700 rounded-lg transition-colors"
+        onClick={handleToggleFavorite}
+        className="p-2 hover:bg-neutral-700 rounded-lg transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center"
+        aria-label={isFavorite ? `Remove ${token.symbol} from favorites` : `Add ${token.symbol} to favorites`}
+        aria-pressed={isFavorite}
       >
         <svg
           className={cn('w-5 h-5', isFavorite ? 'text-primary fill-current' : 'text-neutral-500')}
           fill={isFavorite ? 'currentColor' : 'none'}
           viewBox="0 0 24 24"
           stroke="currentColor"
+          aria-hidden="true"
         >
           <path
             strokeLinecap="round"
@@ -252,6 +340,6 @@ function TokenItem({ token, isFavorite, onSelect, onToggleFavorite }: TokenItemP
           />
         </svg>
       </button>
-    </motion.div>
+    </div>
   );
-}
+});

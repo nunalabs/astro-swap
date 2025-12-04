@@ -26,11 +26,11 @@ use astroswap_shared::{
 use soroban_sdk::{contract, contractimpl, token, Address, Env, IntoVal, Symbol, Vec};
 
 use crate::storage::{
-    extend_graduated_token_ttl, extend_instance_ttl, get_admin, get_factory, get_graduated_token,
-    get_graduation_by_index, get_graduation_count, get_launchpad, get_quote_token, get_staking,
-    increment_graduation_count, is_initialized, is_paused, is_token_graduated, set_admin,
-    set_factory, set_graduated_token, set_graduation_index, set_initialized, set_launchpad,
-    set_paused, set_quote_token, set_staking,
+    acquire_lock, extend_graduated_token_ttl, extend_instance_ttl, get_admin, get_factory,
+    get_graduated_token, get_graduation_by_index, get_graduation_count, get_launchpad,
+    get_quote_token, get_staking, increment_graduation_count, is_initialized, is_paused,
+    is_token_graduated, release_lock, set_admin, set_factory, set_graduated_token,
+    set_graduation_index, set_initialized, set_launchpad, set_paused, set_quote_token, set_staking,
 };
 
 /// Default staking duration: 365 days
@@ -105,23 +105,56 @@ impl AstroSwapBridge {
         Self::require_not_paused(&env)?;
         Self::require_launchpad(&env, &caller)?;
 
+        // SECURITY: Acquire reentrancy lock to prevent cross-contract attacks
+        // This is critical since graduate_token makes multiple external calls
+        if !acquire_lock(&env) {
+            return Err(AstroSwapError::Reentrancy);
+        }
+
         // Verify token hasn't already graduated
         if is_token_graduated(&env, &token) {
+            release_lock(&env);
             return Err(AstroSwapError::AlreadyGraduated);
         }
 
         // Validate amounts
         if token_amount <= 0 || quote_amount <= 0 {
+            release_lock(&env);
             return Err(AstroSwapError::InsufficientLiquidity);
         }
 
-        let quote_token = get_quote_token(&env).ok_or(AstroSwapError::InvalidArgument)?;
+        let quote_token = match get_quote_token(&env) {
+            Some(qt) => qt,
+            None => {
+                release_lock(&env);
+                return Err(AstroSwapError::InvalidArgument);
+            }
+        };
         let factory = get_factory(&env);
 
         // Step 1: Create trading pair via factory
         let factory_client = FactoryClient::new(&env, &factory);
         let pair_address = factory_client.create_pair(&token, &quote_token)?;
+
+        // SECURITY: Verify pair was created successfully by checking it exists in factory
+        // This prevents potential issues if create_pair silently fails or returns wrong address
+        let verified_pair = factory_client.get_pair(&token, &quote_token);
+        if verified_pair.is_none() || verified_pair.as_ref().unwrap() != &pair_address {
+            release_lock(&env);
+            return Err(AstroSwapError::PairNotFound);
+        }
+
         let pair_client = PairClient::new(&env, &pair_address);
+
+        // Verify pair is properly initialized by checking it has the correct tokens
+        let pair_token_0 = pair_client.token_0();
+        let pair_token_1 = pair_client.token_1();
+        let has_token = pair_token_0 == token || pair_token_1 == token;
+        let has_quote = pair_token_0 == quote_token || pair_token_1 == quote_token;
+        if !has_token || !has_quote {
+            release_lock(&env);
+            return Err(AstroSwapError::InvalidPair);
+        }
 
         // Step 2: Transfer tokens from launchpad to bridge (for deposit)
         // Note: Launchpad must approve bridge for these transfers beforehand
@@ -196,6 +229,9 @@ impl AstroSwapBridge {
 
         extend_instance_ttl(&env);
         extend_graduated_token_ttl(&env, &token);
+
+        // SECURITY: Release reentrancy lock after all operations complete successfully
+        release_lock(&env);
 
         Ok(graduation_info)
     }
@@ -316,13 +352,24 @@ impl AstroSwapBridge {
     /// Burn LP tokens by locking them in the contract forever
     /// This ensures liquidity cannot be removed
     fn burn_lp_tokens(env: &Env, pair: &Address, amount: i128) -> Result<(), AstroSwapError> {
-        // LP tokens are already in this contract from the deposit
-        // We don't transfer them anywhere - they stay locked here forever
-        // This is the "burn" mechanism - liquidity is permanently locked
+        // SECURITY FIX: Actually burn LP tokens instead of keeping them in contract
+        // This prevents any possibility of admin upgrading contract to extract LP tokens
+        //
+        // The pair contract has a burn() function that reduces total supply
+        // This makes the liquidity permanently locked and unrecoverable
 
-        // Alternatively, we could transfer to a known burn address
-        // For now, keeping them in the bridge contract achieves the same result
-        // The contract doesn't expose any way to withdraw these tokens
+        if amount <= 0 {
+            return Ok(()); // Nothing to burn
+        }
+
+        // Get pair client and call burn
+        // The bridge contract (current contract) holds the LP tokens after deposit
+        // We authorize as current contract to burn our own LP tokens
+        let pair_client = PairClient::new(env, pair);
+
+        // Call burn - this will require auth from bridge (which we have since we're the current contract)
+        // The burn function reduces total supply, making liquidity truly locked forever
+        pair_client.burn(&env.current_contract_address(), amount)?;
 
         // Log the burn for transparency
         env.events()

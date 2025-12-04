@@ -137,8 +137,10 @@ export function usePool() {
         description: `Transaction hash: ${txHash.slice(0, 10)}...`,
       });
 
-      // Refresh pools
+      // Refresh pools and balances
       queryClient.invalidateQueries({ queryKey: ['pools'] });
+      queryClient.invalidateQueries({ queryKey: ['tokenBalance'] });
+      queryClient.invalidateQueries({ queryKey: ['token-balances'] });
     },
     onError: (error) => {
       addToast({
@@ -185,8 +187,10 @@ export function usePool() {
         description: `Transaction hash: ${txHash.slice(0, 10)}...`,
       });
 
-      // Refresh pools
+      // Refresh pools and balances
       queryClient.invalidateQueries({ queryKey: ['pools'] });
+      queryClient.invalidateQueries({ queryKey: ['tokenBalance'] });
+      queryClient.invalidateQueries({ queryKey: ['token-balances'] });
     },
     onError: (error) => {
       addToast({

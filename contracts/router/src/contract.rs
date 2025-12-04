@@ -26,6 +26,9 @@ impl AstroSwapRouter {
         Ok(())
     }
 
+    // Maximum path length to prevent excessive gas consumption
+    const MAX_PATH_LENGTH: u32 = 5;
+
     /// Swap exact tokens for tokens
     /// Swaps a fixed amount of input tokens for as many output tokens as possible
     ///
@@ -51,10 +54,8 @@ impl AstroSwapRouter {
         // Check deadline
         Self::check_deadline(&env, deadline)?;
 
-        // Path must have at least 2 tokens
-        if path.len() < 2 {
-            return Err(AstroSwapError::InvalidPath);
-        }
+        // Validate path
+        Self::validate_path(&path)?;
 
         // Calculate amounts for the entire path
         let amounts = Self::get_amounts_out(&env, amount_in, &path)?;
@@ -104,10 +105,8 @@ impl AstroSwapRouter {
         // Check deadline
         Self::check_deadline(&env, deadline)?;
 
-        // Path must have at least 2 tokens
-        if path.len() < 2 {
-            return Err(AstroSwapError::InvalidPath);
-        }
+        // Validate path
+        Self::validate_path(&path)?;
 
         // Calculate amounts for the entire path (reverse calculation)
         let amounts = Self::get_amounts_in(&env, amount_out, &path)?;
@@ -390,6 +389,35 @@ impl AstroSwapRouter {
         if env.ledger().timestamp() > deadline {
             return Err(AstroSwapError::DeadlineExpired);
         }
+        Ok(())
+    }
+
+    /// Validate swap path
+    /// - Must have at least 2 tokens
+    /// - Must not exceed maximum length
+    /// - Must not contain duplicate tokens
+    fn validate_path(path: &Vec<Address>) -> Result<(), AstroSwapError> {
+        let len = path.len();
+
+        // Path must have at least 2 tokens
+        if len < 2 {
+            return Err(AstroSwapError::InvalidPath);
+        }
+
+        // Path must not exceed maximum length (prevents excessive gas)
+        if len > Self::MAX_PATH_LENGTH {
+            return Err(AstroSwapError::InvalidPath);
+        }
+
+        // Check for duplicate tokens in path (would indicate a loop)
+        for i in 0..len {
+            for j in (i + 1)..len {
+                if path.get(i).unwrap() == path.get(j).unwrap() {
+                    return Err(AstroSwapError::InvalidPath);
+                }
+            }
+        }
+
         Ok(())
     }
 

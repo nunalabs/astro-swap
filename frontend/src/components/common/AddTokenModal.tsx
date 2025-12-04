@@ -145,17 +145,19 @@ export function AddTokenModal({ isOpen, onClose }: AddTokenModalProps) {
     <Modal isOpen={isOpen} onClose={handleClose} title="Import Token" size="md">
       <div className="space-y-4">
         <div>
-          <label className="block text-sm text-neutral-400 mb-2">
+          <label htmlFor="token-contract-address" className="block text-sm text-neutral-400 mb-2">
             Token Contract Address
           </label>
           <div className="flex gap-2">
             <input
+              id="token-contract-address"
               type="text"
               value={address}
               onChange={(e) => setAddress(e.target.value.toUpperCase())}
               placeholder="CXXXX..."
               className="input flex-1 font-mono text-sm"
               maxLength={56}
+              aria-describedby={error ? "token-address-error" : undefined}
             />
             <Button
               onClick={fetchTokenInfo}
@@ -166,7 +168,7 @@ export function AddTokenModal({ isOpen, onClose }: AddTokenModalProps) {
             </Button>
           </div>
           {error && (
-            <p className="text-red-500 text-sm mt-2">{error}</p>
+            <p id="token-address-error" className="text-red-300 text-sm mt-2" role="alert">{error}</p>
           )}
         </div>
 

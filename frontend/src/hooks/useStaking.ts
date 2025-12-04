@@ -34,8 +34,10 @@ export function useStaking(poolId?: string) {
         description: `Transaction hash: ${txHash.slice(0, 10)}...`,
       });
 
-      // Refresh stake info
+      // Refresh stake info and balances
       queryClient.invalidateQueries({ queryKey: ['stake-info'] });
+      queryClient.invalidateQueries({ queryKey: ['tokenBalance'] });
+      queryClient.invalidateQueries({ queryKey: ['token-balances'] });
     },
     onError: (error) => {
       addToast({
@@ -60,8 +62,10 @@ export function useStaking(poolId?: string) {
         description: `Transaction hash: ${txHash.slice(0, 10)}...`,
       });
 
-      // Refresh stake info
+      // Refresh stake info and balances
       queryClient.invalidateQueries({ queryKey: ['stake-info'] });
+      queryClient.invalidateQueries({ queryKey: ['tokenBalance'] });
+      queryClient.invalidateQueries({ queryKey: ['token-balances'] });
     },
     onError: (error) => {
       addToast({
@@ -86,8 +90,10 @@ export function useStaking(poolId?: string) {
         description: `Transaction hash: ${txHash.slice(0, 10)}...`,
       });
 
-      // Refresh stake info
+      // Refresh stake info and balances (rewards are tokens)
       queryClient.invalidateQueries({ queryKey: ['stake-info'] });
+      queryClient.invalidateQueries({ queryKey: ['tokenBalance'] });
+      queryClient.invalidateQueries({ queryKey: ['token-balances'] });
     },
     onError: (error) => {
       addToast({

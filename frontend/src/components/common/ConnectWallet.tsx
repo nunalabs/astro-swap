@@ -7,16 +7,15 @@ import { Button } from './Button';
 import { Modal } from './Modal';
 
 export function ConnectWallet() {
-  const {
-    isConnected,
-    address,
-    balance,
-    walletName,
-    isMobile,
-    connect,
-    disconnect,
-    isConnecting,
-  } = useWalletStore();
+  // PERFORMANCE: Use granular selectors to avoid unnecessary re-renders
+  const isConnected = useWalletStore((state) => state.isConnected);
+  const address = useWalletStore((state) => state.address);
+  const balance = useWalletStore((state) => state.balance);
+  const walletName = useWalletStore((state) => state.walletName);
+  const isMobile = useWalletStore((state) => state.isMobile);
+  const connect = useWalletStore((state) => state.connect);
+  const disconnect = useWalletStore((state) => state.disconnect);
+  const isConnecting = useWalletStore((state) => state.isConnecting);
   const addToast = useSettingsStore((state) => state.addToast);
   const [showAccountModal, setShowAccountModal] = useState(false);
 

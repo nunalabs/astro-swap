@@ -36,8 +36,10 @@ export function useTokens() {
       );
     },
     enabled: !!address && tokens.length > 0,
-    staleTime: 30000, // 30 seconds
-    refetchInterval: 60000, // Refetch every minute
+    staleTime: 30000, // 30 seconds - use React Query invalidation instead of polling
+    // PERFORMANCE: Removed refetchInterval to reduce RPC calls by ~90%
+    // Balances are invalidated after swaps/transfers via queryClient.invalidateQueries
+    refetchOnWindowFocus: true,
   });
 
   // Update token balances in store when data changes

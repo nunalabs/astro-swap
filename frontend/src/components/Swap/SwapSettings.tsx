@@ -63,15 +63,16 @@ export function SwapSettings() {
 
               {/* Slippage Tolerance */}
               <div className="space-y-2">
-                <label className="text-sm text-neutral-400">
+                <label htmlFor="slippage-input" className="text-sm text-neutral-400">
                   Slippage Tolerance
                 </label>
 
-                <div className="flex gap-2">
+                <div className="flex gap-2" role="group" aria-label="Preset slippage options">
                   {presetSlippages.map((preset) => (
                     <button
                       key={preset}
                       onClick={() => setCustomSlippage(preset.toString())}
+                      aria-pressed={parseFloat(customSlippage) === preset}
                       className={`flex-1 px-3 py-2 rounded-lg font-medium transition-colors ${
                         parseFloat(customSlippage) === preset
                           ? 'bg-primary text-white'
@@ -85,6 +86,7 @@ export function SwapSettings() {
 
                 <div className="relative">
                   <input
+                    id="slippage-input"
                     type="number"
                     value={customSlippage}
                     onChange={(e) => setCustomSlippage(e.target.value)}
@@ -93,14 +95,15 @@ export function SwapSettings() {
                     step="0.1"
                     min="0"
                     max="50"
+                    aria-describedby={parseFloat(customSlippage) > 5 ? "slippage-warning" : undefined}
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400" aria-hidden="true">
                     %
                   </span>
                 </div>
 
                 {parseFloat(customSlippage) > 5 && (
-                  <p className="text-xs text-primary">
+                  <p id="slippage-warning" className="text-xs text-primary" role="alert">
                     High slippage tolerance may result in unfavorable rates
                   </p>
                 )}
@@ -108,12 +111,13 @@ export function SwapSettings() {
 
               {/* Transaction Deadline */}
               <div className="space-y-2">
-                <label className="text-sm text-neutral-400">
+                <label htmlFor="deadline-input" className="text-sm text-neutral-400">
                   Transaction Deadline
                 </label>
 
                 <div className="relative">
                   <input
+                    id="deadline-input"
                     type="number"
                     value={customDeadline}
                     onChange={(e) => setCustomDeadline(e.target.value)}
@@ -123,7 +127,7 @@ export function SwapSettings() {
                     min="1"
                     max="180"
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400" aria-hidden="true">
                     minutes
                   </span>
                 </div>

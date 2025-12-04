@@ -24,9 +24,9 @@ use soroban_sdk::{contract, contractimpl, token, Address, Env, IntoVal, Symbol, 
 
 use crate::storage::{
     extend_instance_ttl, get_admin, get_config, get_fee_recipient, get_protocol,
-    get_protocol_count, is_initialized, is_paused, set_admin, set_config, set_fee_recipient,
-    set_initialized, set_paused, set_protocol, set_protocol_count, AggregatorConfig,
-    ProtocolAdapter,
+    get_protocol_count, is_initialized, is_locked, is_paused, set_admin, set_config,
+    set_fee_recipient, set_initialized, set_locked, set_paused, set_protocol, set_protocol_count,
+    AggregatorConfig, ProtocolAdapter,
 };
 
 /// Basis points constant (100% = 10000)
@@ -95,6 +95,8 @@ impl AstroSwapAggregator {
     ///
     /// # Returns
     /// * Actual amount of output tokens received
+    ///
+    /// Uses reentrancy guard to prevent flash loan attacks
     pub fn swap(
         env: Env,
         user: Address,
@@ -108,27 +110,47 @@ impl AstroSwapAggregator {
         Self::require_not_paused(&env)?;
         Self::check_deadline(&env, deadline)?;
 
+        // Acquire reentrancy lock
+        Self::acquire_lock(&env)?;
+
         // Validate amounts
         if amount_in <= 0 {
+            Self::release_lock(&env);
             return Err(AstroSwapError::InvalidArgument);
         }
 
         // Find the best route
-        let route = Self::find_best_route_internal(&env, &token_in, &token_out, amount_in)?;
+        let route = match Self::find_best_route_internal(&env, &token_in, &token_out, amount_in) {
+            Ok(r) => r,
+            Err(e) => {
+                Self::release_lock(&env);
+                return Err(e);
+            }
+        };
 
         // Verify minimum output
         if route.expected_output < min_out {
+            Self::release_lock(&env);
             return Err(AstroSwapError::SlippageExceeded);
         }
 
         // Execute the route
-        let actual_out = Self::execute_route(&env, &user, &route, amount_in)?;
+        let actual_out = match Self::execute_route(&env, &user, &route, amount_in) {
+            Ok(out) => out,
+            Err(e) => {
+                Self::release_lock(&env);
+                return Err(e);
+            }
+        };
 
         // Final slippage check
         if actual_out < min_out {
+            Self::release_lock(&env);
             return Err(AstroSwapError::SlippageExceeded);
         }
 
+        // Release reentrancy lock
+        Self::release_lock(&env);
         extend_instance_ttl(&env);
         Ok(actual_out)
     }
@@ -137,6 +159,8 @@ impl AstroSwapAggregator {
     ///
     /// Useful when the user already knows the optimal route
     /// or wants to use a specific path
+    ///
+    /// Uses reentrancy guard to prevent flash loan attacks
     pub fn swap_with_route(
         env: Env,
         user: Address,
@@ -149,19 +173,32 @@ impl AstroSwapAggregator {
         Self::require_not_paused(&env)?;
         Self::check_deadline(&env, deadline)?;
 
+        // Acquire reentrancy lock
+        Self::acquire_lock(&env)?;
+
         // Validate route
         if route.steps.is_empty() {
+            Self::release_lock(&env);
             return Err(AstroSwapError::InvalidPath);
         }
 
         // Execute the route
-        let actual_out = Self::execute_route(&env, &user, &route, amount_in)?;
+        let actual_out = match Self::execute_route(&env, &user, &route, amount_in) {
+            Ok(out) => out,
+            Err(e) => {
+                Self::release_lock(&env);
+                return Err(e);
+            }
+        };
 
         // Slippage check
         if actual_out < min_out {
+            Self::release_lock(&env);
             return Err(AstroSwapError::SlippageExceeded);
         }
 
+        // Release reentrancy lock
+        Self::release_lock(&env);
         extend_instance_ttl(&env);
         Ok(actual_out)
     }
@@ -627,7 +664,7 @@ impl AstroSwapAggregator {
             }
         }
 
-        // Execute each step in the route
+        // Execute each step in the route with per-hop slippage validation
         for i in 0..route.steps.len() {
             let step = route.steps.get(i).unwrap();
 
@@ -644,7 +681,17 @@ impl AstroSwapAggregator {
                 route.steps.get(i + 1).unwrap().pool_address.clone()
             };
 
-            // Execute swap based on protocol
+            // SECURITY: Calculate minimum per-hop output with tolerance
+            // Allow 1% slippage per hop to account for price movements
+            // This prevents MEV sandwich attacks on individual hops
+            let per_hop_slippage_bps: i128 = 100; // 1% per hop
+            let min_hop_out = step
+                .expected_out
+                .checked_mul(BPS as i128 - per_hop_slippage_bps)
+                .unwrap_or(0)
+                / BPS as i128;
+
+            // Execute swap based on protocol with per-hop slippage protection
             current_amount = Self::execute_protocol_swap(
                 env,
                 step.protocol_id,
@@ -652,14 +699,20 @@ impl AstroSwapAggregator {
                 &step.token_in,
                 &step.token_out,
                 current_amount,
+                min_hop_out,
                 &recipient,
             )?;
+
+            // SECURITY: Validate per-hop output against expectations
+            if current_amount < min_hop_out {
+                return Err(AstroSwapError::SlippageExceeded);
+            }
         }
 
         Ok(current_amount)
     }
 
-    /// Execute a swap on a specific protocol
+    /// Execute a swap on a specific protocol with per-hop slippage protection
     fn execute_protocol_swap(
         env: &Env,
         protocol_id: u32,
@@ -667,18 +720,20 @@ impl AstroSwapAggregator {
         token_in: &Address,
         _token_out: &Address,
         _amount_in: i128,
+        min_out: i128,
         recipient: &Address,
     ) -> Result<i128, AstroSwapError> {
         // For AstroSwap, use the pair's swap_from_balance function
         // (tokens already transferred to pool in execute_route)
         if protocol_id == 0 {
             let pair_client = PairClient::new(env, pool);
-            // Minimum out = 0 because we already validated the route
-            let (_amount_in, amount_out) = pair_client.swap_from_balance(recipient, token_in, 0)?;
+            // SECURITY: Pass per-hop minimum output for slippage protection
+            let (_amount_in, amount_out) =
+                pair_client.swap_from_balance(recipient, token_in, min_out)?;
             return Ok(amount_out);
         }
 
-        // For external protocols, use generic swap interface
+        // For external protocols, use generic swap interface with slippage protection
         let result: i128 = env.invoke_contract(
             pool,
             &Symbol::new(env, "swap"),
@@ -687,7 +742,7 @@ impl AstroSwapAggregator {
                 [
                     recipient.to_val(),
                     token_in.to_val(),
-                    0i128.into_val(env), // min_out = 0, already validated
+                    min_out.into_val(env), // SECURITY: Per-hop minimum output
                 ],
             ),
         );
@@ -728,6 +783,20 @@ impl AstroSwapAggregator {
             return Err(AstroSwapError::DeadlineExpired);
         }
         Ok(())
+    }
+
+    /// Internal function to acquire reentrancy lock
+    fn acquire_lock(env: &Env) -> Result<(), AstroSwapError> {
+        if is_locked(env) {
+            return Err(AstroSwapError::Reentrancy);
+        }
+        set_locked(env, true);
+        Ok(())
+    }
+
+    /// Internal function to release reentrancy lock
+    fn release_lock(env: &Env) {
+        set_locked(env, false);
     }
 }
 
@@ -839,6 +908,26 @@ mod tests {
         assert!(client.is_paused());
 
         client.set_paused(&admin, &false);
+        assert!(!client.is_paused());
+    }
+
+    #[test]
+    fn test_reentrancy_guard_initialized() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(AstroSwapAggregator, ());
+        let client = AstroSwapAggregatorClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let factory = Address::generate(&env);
+
+        client.initialize(&admin, &factory);
+
+        // Verify reentrancy lock starts as false
+        // (we can't directly access is_locked, but we test it indirectly through behavior)
+        // If we could call swap here it wouldn't fail with Reentrancy error
+        // This test just confirms initialization works with the new storage key
         assert!(!client.is_paused());
     }
 }

@@ -15,6 +15,7 @@ pub enum DataKey {
     FeeBps,
     Initialized,
     Locked, // Reentrancy lock for extra security
+    Paused, // Emergency pause mechanism
 
     // Persistent storage (user data)
     Balance(Address),
@@ -34,6 +35,21 @@ pub fn is_locked(env: &Env) -> bool {
 /// Set the lock state
 pub fn set_locked(env: &Env, locked: bool) {
     env.storage().instance().set(&DataKey::Locked, &locked);
+}
+
+// ==================== Pause Mechanism ====================
+
+/// Check if the contract is paused
+pub fn is_paused(env: &Env) -> bool {
+    env.storage()
+        .instance()
+        .get::<DataKey, bool>(&DataKey::Paused)
+        .unwrap_or(false)
+}
+
+/// Set the paused state
+pub fn set_paused(env: &Env, paused: bool) {
+    env.storage().instance().set(&DataKey::Paused, &paused);
 }
 
 /// Check if the contract is initialized

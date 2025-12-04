@@ -6,13 +6,22 @@ import type { Token } from '../types';
 /**
  * Token Indexer Service
  * Automatically discovers and indexes tokens from the DEX factory and pairs
+ *
+ * PERFORMANCE: Uses batched parallel requests to minimize RPC calls (N+1 fix)
  */
 
 // Cache for token metadata to avoid repeated calls
 const tokenMetadataCache = new Map<string, Token>();
 
+// Pending requests map to deduplicate concurrent requests for same token
+const pendingRequests = new Map<string, Promise<Token | null>>();
+
+// Batch size for concurrent metadata fetches (prevents overwhelming RPC)
+const BATCH_SIZE = 5;
+
 /**
  * Fetch token metadata from a Soroban token contract
+ * PERFORMANCE: Fetches symbol, name, and decimals in parallel (3x faster)
  */
 export async function fetchTokenMetadata(tokenAddress: string): Promise<Token | null> {
   // Check cache first
@@ -20,6 +29,28 @@ export async function fetchTokenMetadata(tokenAddress: string): Promise<Token | 
     return tokenMetadataCache.get(tokenAddress)!;
   }
 
+  // Check if there's already a pending request for this token (deduplication)
+  if (pendingRequests.has(tokenAddress)) {
+    return pendingRequests.get(tokenAddress)!;
+  }
+
+  // Create the fetch promise
+  const fetchPromise = fetchTokenMetadataInternal(tokenAddress);
+  pendingRequests.set(tokenAddress, fetchPromise);
+
+  try {
+    const result = await fetchPromise;
+    return result;
+  } finally {
+    // Clean up pending request
+    pendingRequests.delete(tokenAddress);
+  }
+}
+
+/**
+ * Internal function to fetch token metadata with parallel RPC calls
+ */
+async function fetchTokenMetadataInternal(tokenAddress: string): Promise<Token | null> {
   try {
     // Create a dummy account for simulation
     const dummyAccount = new StellarSdk.Account(
@@ -29,7 +60,7 @@ export async function fetchTokenMetadata(tokenAddress: string): Promise<Token | 
 
     const contract = new StellarSdk.Contract(tokenAddress);
 
-    // Fetch symbol
+    // PERFORMANCE: Build all transactions upfront
     const symbolTx = new StellarSdk.TransactionBuilder(dummyAccount, {
       fee: '100',
       networkPassphrase: NETWORK_PASSPHRASE,
@@ -38,16 +69,6 @@ export async function fetchTokenMetadata(tokenAddress: string): Promise<Token | 
       .setTimeout(30)
       .build();
 
-    const symbolResult = await sorobanServer.simulateTransaction(symbolTx);
-
-    if (!StellarSdk.SorobanRpc.Api.isSimulationSuccess(symbolResult)) {
-      console.error(`Failed to fetch symbol for ${tokenAddress}`);
-      return null;
-    }
-
-    const symbol = StellarSdk.scValToNative(symbolResult.result!.retval) as string;
-
-    // Fetch name
     const nameTx = new StellarSdk.TransactionBuilder(dummyAccount, {
       fee: '100',
       networkPassphrase: NETWORK_PASSPHRASE,
@@ -56,16 +77,6 @@ export async function fetchTokenMetadata(tokenAddress: string): Promise<Token | 
       .setTimeout(30)
       .build();
 
-    const nameResult = await sorobanServer.simulateTransaction(nameTx);
-
-    if (!StellarSdk.SorobanRpc.Api.isSimulationSuccess(nameResult)) {
-      console.error(`Failed to fetch name for ${tokenAddress}`);
-      return null;
-    }
-
-    const name = StellarSdk.scValToNative(nameResult.result!.retval) as string;
-
-    // Fetch decimals
     const decimalsTx = new StellarSdk.TransactionBuilder(dummyAccount, {
       fee: '100',
       networkPassphrase: NETWORK_PASSPHRASE,
@@ -74,13 +85,31 @@ export async function fetchTokenMetadata(tokenAddress: string): Promise<Token | 
       .setTimeout(30)
       .build();
 
-    const decimalsResult = await sorobanServer.simulateTransaction(decimalsTx);
+    // PERFORMANCE: Execute all 3 simulations in parallel (N+1 fix)
+    const [symbolResult, nameResult, decimalsResult] = await Promise.all([
+      sorobanServer.simulateTransaction(symbolTx),
+      sorobanServer.simulateTransaction(nameTx),
+      sorobanServer.simulateTransaction(decimalsTx),
+    ]);
+
+    // Validate all results
+    if (!StellarSdk.SorobanRpc.Api.isSimulationSuccess(symbolResult)) {
+      console.error(`Failed to fetch symbol for ${tokenAddress}`);
+      return null;
+    }
+
+    if (!StellarSdk.SorobanRpc.Api.isSimulationSuccess(nameResult)) {
+      console.error(`Failed to fetch name for ${tokenAddress}`);
+      return null;
+    }
 
     if (!StellarSdk.SorobanRpc.Api.isSimulationSuccess(decimalsResult)) {
       console.error(`Failed to fetch decimals for ${tokenAddress}`);
       return null;
     }
 
+    const symbol = StellarSdk.scValToNative(symbolResult.result!.retval) as string;
+    const name = StellarSdk.scValToNative(nameResult.result!.retval) as string;
     const decimals = Number(StellarSdk.scValToNative(decimalsResult.result!.retval));
 
     const token: Token = {
@@ -88,7 +117,7 @@ export async function fetchTokenMetadata(tokenAddress: string): Promise<Token | 
       symbol,
       name,
       decimals,
-      logoURI: getTokenLogoURI(symbol), // Try to get known logo
+      logoURI: getTokenLogoURI(symbol),
     };
 
     // Cache the result
@@ -102,7 +131,45 @@ export async function fetchTokenMetadata(tokenAddress: string): Promise<Token | 
 }
 
 /**
+ * Batch fetch metadata for multiple tokens
+ * PERFORMANCE: Processes tokens in batches to avoid overwhelming RPC
+ */
+export async function fetchTokenMetadataBatch(tokenAddresses: string[]): Promise<Map<string, Token>> {
+  const results = new Map<string, Token>();
+
+  // Filter out already cached tokens
+  const uncachedAddresses = tokenAddresses.filter(addr => {
+    const cached = tokenMetadataCache.get(addr);
+    if (cached) {
+      results.set(addr, cached);
+      return false;
+    }
+    return true;
+  });
+
+  // Process uncached tokens in batches
+  for (let i = 0; i < uncachedAddresses.length; i += BATCH_SIZE) {
+    const batch = uncachedAddresses.slice(i, i + BATCH_SIZE);
+
+    // Fetch batch in parallel
+    const batchResults = await Promise.all(
+      batch.map(addr => fetchTokenMetadata(addr))
+    );
+
+    // Add successful results to map
+    batchResults.forEach((token, idx) => {
+      if (token) {
+        results.set(batch[idx], token);
+      }
+    });
+  }
+
+  return results;
+}
+
+/**
  * Get token info from a pair contract
+ * PERFORMANCE: Fetches token0 and token1 in parallel (2x faster)
  */
 export async function getPairTokens(
   pairAddress: string
@@ -115,7 +182,7 @@ export async function getPairTokens(
 
     const contract = new StellarSdk.Contract(pairAddress);
 
-    // Fetch token0
+    // PERFORMANCE: Build both transactions upfront
     const token0Tx = new StellarSdk.TransactionBuilder(dummyAccount, {
       fee: '100',
       networkPassphrase: NETWORK_PASSPHRASE,
@@ -124,16 +191,6 @@ export async function getPairTokens(
       .setTimeout(30)
       .build();
 
-    const token0Result = await sorobanServer.simulateTransaction(token0Tx);
-
-    if (!StellarSdk.SorobanRpc.Api.isSimulationSuccess(token0Result)) {
-      console.error(`Failed to fetch token0 for pair ${pairAddress}`);
-      return null;
-    }
-
-    const token0 = StellarSdk.scValToNative(token0Result.result!.retval) as string;
-
-    // Fetch token1
     const token1Tx = new StellarSdk.TransactionBuilder(dummyAccount, {
       fee: '100',
       networkPassphrase: NETWORK_PASSPHRASE,
@@ -142,13 +199,23 @@ export async function getPairTokens(
       .setTimeout(30)
       .build();
 
-    const token1Result = await sorobanServer.simulateTransaction(token1Tx);
+    // PERFORMANCE: Execute both simulations in parallel
+    const [token0Result, token1Result] = await Promise.all([
+      sorobanServer.simulateTransaction(token0Tx),
+      sorobanServer.simulateTransaction(token1Tx),
+    ]);
+
+    if (!StellarSdk.SorobanRpc.Api.isSimulationSuccess(token0Result)) {
+      console.error(`Failed to fetch token0 for pair ${pairAddress}`);
+      return null;
+    }
 
     if (!StellarSdk.SorobanRpc.Api.isSimulationSuccess(token1Result)) {
       console.error(`Failed to fetch token1 for pair ${pairAddress}`);
       return null;
     }
 
+    const token0 = StellarSdk.scValToNative(token0Result.result!.retval) as string;
     const token1 = StellarSdk.scValToNative(token1Result.result!.retval) as string;
 
     return { token0, token1 };
@@ -160,6 +227,7 @@ export async function getPairTokens(
 
 /**
  * Index all tokens from factory pairs
+ * PERFORMANCE: Uses batch fetching to minimize RPC calls
  */
 export async function indexTokensFromFactory(sourceAddress: string): Promise<Token[]> {
   try {
@@ -173,26 +241,27 @@ export async function indexTokensFromFactory(sourceAddress: string): Promise<Tok
 
     const tokenAddresses = new Set<string>();
 
-    // Extract token addresses from each pair
-    for (const pairAddress of pairs) {
-      const pairTokens = await getPairTokens(pairAddress);
-      if (pairTokens) {
-        tokenAddresses.add(pairTokens.token0);
-        tokenAddresses.add(pairTokens.token1);
+    // PERFORMANCE: Fetch pair tokens in batches of BATCH_SIZE
+    for (let i = 0; i < pairs.length; i += BATCH_SIZE) {
+      const batch = pairs.slice(i, i + BATCH_SIZE);
+
+      const batchResults = await Promise.all(
+        batch.map(pairAddress => getPairTokens(pairAddress))
+      );
+
+      for (const pairTokens of batchResults) {
+        if (pairTokens) {
+          tokenAddresses.add(pairTokens.token0);
+          tokenAddresses.add(pairTokens.token1);
+        }
       }
     }
 
-    // Fetch metadata for each unique token
-    const tokens: Token[] = [];
+    // PERFORMANCE: Batch fetch metadata for all unique tokens
+    const tokenAddressArray = Array.from(tokenAddresses);
+    const metadataMap = await fetchTokenMetadataBatch(tokenAddressArray);
 
-    for (const address of tokenAddresses) {
-      const metadata = await fetchTokenMetadata(address);
-      if (metadata) {
-        tokens.push(metadata);
-      }
-    }
-
-    return tokens;
+    return Array.from(metadataMap.values());
   } catch (error) {
     console.error('Error indexing tokens from factory:', error);
     return [];

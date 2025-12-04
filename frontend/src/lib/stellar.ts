@@ -1,5 +1,6 @@
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { signTransaction as signWithWalletKit } from './wallet-kit';
+import { parseError } from './errors';
 
 // Network configuration
 const NETWORK = import.meta.env.VITE_STELLAR_NETWORK || 'testnet';
@@ -86,6 +87,85 @@ export async function getTokenBalance(
 }
 
 /**
+ * Result from transaction simulation
+ */
+export interface SimulationResult {
+  success: boolean;
+  error?: string;
+  estimatedFee?: string;
+  minResourceFee?: string;
+  events?: unknown[];
+}
+
+/**
+ * Extract error details from simulation failure
+ */
+function extractSimulationError(result: StellarSdk.SorobanRpc.Api.SimulateTransactionResponse): string {
+  if (StellarSdk.SorobanRpc.Api.isSimulationError(result)) {
+    // Parse the error message to extract contract error codes
+    const errorMessage = result.error || 'Unknown simulation error';
+    const parsed = parseError(errorMessage);
+    return parsed.message;
+  }
+
+  // Check for restore errors (expired entries that need restoration)
+  if (StellarSdk.SorobanRpc.Api.isSimulationRestore(result)) {
+    return 'Transaction requires restoring expired contract data. Please try again.';
+  }
+
+  return 'Transaction simulation failed. Please check your inputs.';
+}
+
+/**
+ * Simulate a transaction before submitting
+ * Call this to validate a transaction will succeed before asking user to sign
+ */
+export async function simulateTransaction(
+  sourceAddress: string,
+  operations: StellarSdk.xdr.Operation[]
+): Promise<SimulationResult> {
+  try {
+    // Load source account
+    const sourceAccount = await server.loadAccount(sourceAddress);
+
+    // Build transaction with operations
+    let builder = new StellarSdk.TransactionBuilder(sourceAccount, {
+      fee: StellarSdk.BASE_FEE,
+      networkPassphrase: NETWORK_PASSPHRASE,
+    });
+
+    operations.forEach(op => {
+      builder = builder.addOperation(op);
+    });
+
+    const transaction = builder.setTimeout(30).build();
+
+    // Simulate transaction
+    const simulated = await sorobanServer.simulateTransaction(transaction);
+
+    if (StellarSdk.SorobanRpc.Api.isSimulationSuccess(simulated)) {
+      return {
+        success: true,
+        estimatedFee: simulated.minResourceFee,
+        minResourceFee: simulated.minResourceFee,
+      };
+    }
+
+    return {
+      success: false,
+      error: extractSimulationError(simulated),
+    };
+  } catch (error) {
+    console.error('Error simulating transaction:', error);
+    const parsed = parseError(error);
+    return {
+      success: false,
+      error: parsed.message,
+    };
+  }
+}
+
+/**
  * Build and submit a Soroban transaction
  */
 export async function buildAndSubmitTransaction(
@@ -113,7 +193,8 @@ export async function buildAndSubmitTransaction(
     const simulated = await sorobanServer.simulateTransaction(transaction);
 
     if (!StellarSdk.SorobanRpc.Api.isSimulationSuccess(simulated)) {
-      throw new Error('Transaction simulation failed');
+      const errorMessage = extractSimulationError(simulated);
+      throw new Error(errorMessage);
     }
 
     // Prepare transaction with proper fee
@@ -134,14 +215,32 @@ export async function buildAndSubmitTransaction(
 
     // Wait for transaction to be included in a ledger
     let status = await sorobanServer.getTransaction(result.hash);
+    let attempts = 0;
+    const maxAttempts = 30; // 30 seconds max wait
 
-    while (status.status === 'NOT_FOUND') {
+    while (status.status === 'NOT_FOUND' && attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 1000));
       status = await sorobanServer.getTransaction(result.hash);
+      attempts++;
     }
 
     if (status.status === 'SUCCESS') {
       return result.hash;
+    }
+
+    if (status.status === 'NOT_FOUND') {
+      throw new Error('Transaction timed out. It may still succeed - check your wallet.');
+    }
+
+    // Parse failed transaction error
+    if (status.status === 'FAILED') {
+      // Try to extract meaningful error from result
+      const resultXdr = status.resultXdr;
+      if (resultXdr) {
+        const errorStr = resultXdr.toString();
+        const parsed = parseError(errorStr);
+        throw new Error(parsed.message);
+      }
     }
 
     throw new Error('Transaction failed');

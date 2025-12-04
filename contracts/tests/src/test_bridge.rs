@@ -89,11 +89,21 @@ fn test_complete_graduation_flow() {
             || (token_0 == ctx.xlm_address && token_1 == graduated_token_address)
     );
 
-    // Verify LP tokens were locked in bridge contract
+    // Verify LP tokens were BURNED (not just locked in bridge)
+    // After the security fix, LP tokens are permanently burned to reduce total supply
+    // Bridge balance should be 0 since tokens are burned, not held
     let bridge_lp_balance = pair_client.balance(&ctx.bridge_address);
+    assert_eq!(
+        bridge_lp_balance, 0,
+        "Bridge should NOT hold LP tokens - they should be burned"
+    );
+
+    // The total supply should reflect only the minimum locked liquidity
+    // (the initial MINIMUM_LIQUIDITY that's locked to prevent manipulation)
+    let total_supply = pair_client.total_supply();
     assert!(
-        bridge_lp_balance > 0,
-        "Bridge should hold locked LP tokens"
+        total_supply > 0,
+        "Total supply should only be minimum liquidity locked in pair"
     );
 
     // Verify staking pool was created

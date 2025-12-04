@@ -13,6 +13,7 @@ pub enum DataKey {
     Admin,
     Initialized,
     Paused,
+    Locked, // Reentrancy lock for graduation operations
     Factory,
     Staking,
     Launchpad,
@@ -63,6 +64,28 @@ pub fn is_paused(env: &Env) -> bool {
 /// Set paused state
 pub fn set_paused(env: &Env, paused: bool) {
     env.storage().instance().set(&DataKey::Paused, &paused);
+}
+
+/// Check if the contract is locked (reentrancy guard)
+pub fn is_locked(env: &Env) -> bool {
+    env.storage()
+        .instance()
+        .get::<DataKey, bool>(&DataKey::Locked)
+        .unwrap_or(false)
+}
+
+/// Acquire reentrancy lock - returns error if already locked
+pub fn acquire_lock(env: &Env) -> bool {
+    if is_locked(env) {
+        return false;
+    }
+    env.storage().instance().set(&DataKey::Locked, &true);
+    true
+}
+
+/// Release reentrancy lock
+pub fn release_lock(env: &Env) {
+    env.storage().instance().set(&DataKey::Locked, &false);
 }
 
 /// Get factory address

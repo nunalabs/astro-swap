@@ -1,4 +1,12 @@
-import express, { Request, Response, NextFunction } from 'express';
+/**
+ * AstroSwap Indexer API Server
+ *
+ * Production-grade REST API with security, monitoring, and rate limiting
+ *
+ * @module api
+ */
+
+import express, { Request, Response, NextFunction, Express } from 'express';
 import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
 import { logger } from './logger';
@@ -16,94 +24,192 @@ import {
   type StatsResponse,
 } from './types';
 import { calculatePrices } from './utils';
+import {
+  setupSecurity,
+  shutdownSecurity,
+  type SecurityMiddleware,
+} from './middleware/security';
+import {
+  initSentry,
+  requestTracker,
+  sentryErrorHandler,
+  HealthChecker,
+  createHealthEndpoint,
+  createReadinessProbe,
+  createLivenessProbe,
+  reportError,
+  defaultMonitoringConfig,
+} from './monitoring';
+
+// ============================================================================
+// API Server Class
+// ============================================================================
 
 export class APIServer {
-  private app: express.Application;
+  private app: Express;
   private prisma: PrismaClient;
   private config: IndexerConfig;
+  private security: SecurityMiddleware;
+  private healthChecker: HealthChecker;
 
   constructor(config: IndexerConfig, prisma: PrismaClient) {
     this.config = config;
     this.prisma = prisma;
     this.app = express();
 
+    // Initialize security middleware
+    this.security = setupSecurity();
+
+    // Initialize health checker
+    this.healthChecker = new HealthChecker(prisma, {
+      stellarRpcUrl: config.stellar.rpcUrl,
+    });
+
+    // Initialize Sentry
+    initSentry(this.app, defaultMonitoringConfig);
+
+    // Setup middleware and routes
     this.setupMiddleware();
     this.setupRoutes();
     this.setupErrorHandling();
   }
 
   /**
-   * Setup Express middleware
+   * Setup Express middleware with production security
    */
   private setupMiddleware(): void {
+    // Trust proxy for rate limiting behind load balancer
+    this.app.set('trust proxy', 1);
+
+    // Request ID for tracing
+    this.app.use(this.security.requestId);
+
+    // Security headers (Helmet)
+    this.app.use(this.security.helmet);
+    this.app.use(this.security.securityHeaders);
+
+    // Compression
+    this.app.use(this.security.compression);
+
+    // IP validation
+    this.app.use(this.security.ipValidator);
+
     // CORS
     this.app.use(
       cors({
         origin: this.config.api.corsOrigins,
         credentials: true,
+        methods: ['GET', 'POST', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
+        exposedHeaders: ['X-Request-ID', 'X-RateLimit-Limit', 'X-RateLimit-Remaining'],
+        maxAge: 86400, // 24 hours
       })
     );
 
-    // Body parsing
-    this.app.use(express.json());
-    this.app.use(express.urlencoded({ extended: true }));
+    // Body parsing with limits
+    this.app.use(express.json({ limit: '1mb' }));
+    this.app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-    // Request logging
-    this.app.use((req, _res, next) => {
-      logger.info(
-        {
-          method: req.method,
-          path: req.path,
-          query: req.query,
-        },
-        'Incoming request'
-      );
-      next();
-    });
+    // Request sanitization
+    this.app.use(this.security.sanitize);
+
+    // Request tracking/metrics
+    this.app.use(requestTracker());
+
+    // Global rate limiting
+    this.app.use(this.security.globalRateLimit);
+
+    // Speed limiter (gradual slowdown)
+    this.app.use(this.security.speedLimit);
   }
 
   /**
-   * Setup API routes
+   * Setup API routes with tiered rate limiting
    */
   private setupRoutes(): void {
     const router = express.Router();
 
-    // Health check
-    router.get('/health', this.getHealth.bind(this));
+    // ========================================
+    // Health & Monitoring Endpoints (Relaxed rate limit)
+    // ========================================
+
+    // Kubernetes probes
+    this.app.get('/healthz', createLivenessProbe());
+    this.app.get('/readyz', createReadinessProbe(this.healthChecker));
+
+    // Detailed health check
+    router.get(
+      '/health',
+      this.security.relaxedRateLimit,
+      createHealthEndpoint(this.healthChecker)
+    );
+
+    // ========================================
+    // Public Data Endpoints (Standard rate limit)
+    // ========================================
 
     // Pairs
-    router.get('/pairs', this.getPairs.bind(this));
-    router.get('/pairs/:address', this.getPairDetails.bind(this));
-    router.get('/pairs/:address/swaps', this.getPairSwaps.bind(this));
-    router.get('/pairs/:address/liquidity', this.getPairLiquidity.bind(this));
-    router.get('/pairs/:address/price-history', this.getPairPriceHistory.bind(this));
+    router.get('/pairs', this.asyncHandler(this.getPairs.bind(this)));
+    router.get('/pairs/:address', this.asyncHandler(this.getPairDetails.bind(this)));
+    router.get(
+      '/pairs/:address/swaps',
+      this.security.strictRateLimit, // Heavy query
+      this.asyncHandler(this.getPairSwaps.bind(this))
+    );
+    router.get(
+      '/pairs/:address/liquidity',
+      this.security.strictRateLimit,
+      this.asyncHandler(this.getPairLiquidity.bind(this))
+    );
+    router.get(
+      '/pairs/:address/price-history',
+      this.security.strictRateLimit,
+      this.asyncHandler(this.getPairPriceHistory.bind(this))
+    );
 
     // Users
-    router.get('/users/:address/positions', this.getUserPositions.bind(this));
-    router.get('/users/:address/swaps', this.getUserSwaps.bind(this));
+    router.get(
+      '/users/:address/positions',
+      this.asyncHandler(this.getUserPositions.bind(this))
+    );
+    router.get(
+      '/users/:address/swaps',
+      this.security.strictRateLimit,
+      this.asyncHandler(this.getUserSwaps.bind(this))
+    );
 
-    // Protocol stats
-    router.get('/stats', this.getProtocolStats.bind(this));
+    // Protocol stats (Relaxed - cached data)
+    router.get(
+      '/stats',
+      this.security.relaxedRateLimit,
+      this.asyncHandler(this.getProtocolStats.bind(this))
+    );
 
     // Mount router
     this.app.use('/api/v1', router);
 
-    // Root redirect
+    // Root endpoint
     this.app.get('/', (_req, res) => {
       res.json({
         name: 'AstroSwap Indexer API',
-        version: '1.0.0',
+        version: process.env.APP_VERSION || '1.0.0',
+        environment: process.env.NODE_ENV || 'development',
+        documentation: '/api/v1/docs',
         endpoints: {
-          health: '/health',
+          health: '/api/v1/health',
           pairs: '/api/v1/pairs',
           stats: '/api/v1/stats',
+          probes: {
+            liveness: '/healthz',
+            readiness: '/readyz',
+          },
         },
       });
     });
   }
 
   /**
-   * Setup error handling
+   * Setup error handling with Sentry integration
    */
   private setupErrorHandling(): void {
     // 404 handler
@@ -111,18 +217,57 @@ export class APIServer {
       res.status(404).json({
         error: 'Not Found',
         message: `Route ${req.method} ${req.path} not found`,
+        requestId: req.headers['x-request-id'],
       });
     });
+
+    // Sentry error handler
+    this.app.use(sentryErrorHandler());
 
     // Global error handler
     this.app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
-      logger.error({ err, path: req.path }, 'API error');
+      const requestId = req.headers['x-request-id'] as string;
 
-      res.status(500).json({
-        error: 'Internal Server Error',
+      // Log error
+      logger.error(
+        {
+          err,
+          path: req.path,
+          method: req.method,
+          requestId,
+        },
+        'API error'
+      );
+
+      // Report to Sentry
+      reportError(err, {
+        path: req.path,
+        method: req.method,
+        requestId,
+        query: req.query,
+      });
+
+      // Determine status code
+      const statusCode = 'statusCode' in err ? (err as any).statusCode : 500;
+
+      // Send response
+      res.status(statusCode).json({
+        error: statusCode === 500 ? 'Internal Server Error' : err.name,
         message: process.env.NODE_ENV === 'development' ? err.message : 'An error occurred',
+        requestId,
       });
     });
+  }
+
+  /**
+   * Async handler wrapper for route handlers
+   */
+  private asyncHandler(
+    fn: (req: Request, res: Response, next: NextFunction) => Promise<void>
+  ) {
+    return (req: Request, res: Response, next: NextFunction) => {
+      Promise.resolve(fn(req, res, next)).catch(next);
+    };
   }
 
   /**
@@ -131,35 +276,29 @@ export class APIServer {
   async start(): Promise<void> {
     return new Promise((resolve) => {
       this.app.listen(this.config.api.port, () => {
-        logger.info({ port: this.config.api.port }, 'API server started');
+        logger.info(
+          {
+            port: this.config.api.port,
+            environment: process.env.NODE_ENV,
+          },
+          'API server started'
+        );
         resolve();
       });
     });
   }
 
+  /**
+   * Graceful shutdown
+   */
+  async shutdown(): Promise<void> {
+    await shutdownSecurity();
+    logger.info('API server shutdown complete');
+  }
+
   // ============================================================================
   // Route Handlers
   // ============================================================================
-
-  /**
-   * GET /health
-   */
-  private async getHealth(_req: Request, res: Response): Promise<void> {
-    try {
-      await this.prisma.$queryRaw`SELECT 1`;
-      res.json({
-        status: 'healthy',
-        timestamp: new Date().toISOString(),
-        database: 'connected',
-      });
-    } catch (error) {
-      res.status(503).json({
-        status: 'unhealthy',
-        timestamp: new Date().toISOString(),
-        database: 'disconnected',
-      });
-    }
-  }
 
   /**
    * GET /api/v1/pairs

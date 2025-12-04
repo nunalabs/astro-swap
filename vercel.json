@@ -1,23 +1,23 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
-  "name": "astroswap-dex",
   "framework": "vite",
   "buildCommand": "cd frontend && pnpm build",
   "outputDirectory": "frontend/dist",
-  "installCommand": "cd frontend && pnpm install",
+  "installCommand": "cd frontend && npm install",
   "devCommand": "cd frontend && pnpm dev",
   "regions": ["iad1"],
-  "env": {
-    "VITE_STELLAR_NETWORK": "testnet"
-  },
   "build": {
     "env": {
       "VITE_STELLAR_NETWORK": "testnet",
-      "VITE_FACTORY_CONTRACT_ID": "@factory_contract_id",
-      "VITE_ROUTER_CONTRACT_ID": "@router_contract_id",
-      "VITE_STAKING_CONTRACT_ID": "@staking_contract_id",
-      "VITE_INDEXER_API_URL": "@indexer_api_url"
+      "VITE_SOROBAN_RPC_URL": "https://soroban-testnet.stellar.org",
+      "VITE_NETWORK_PASSPHRASE": "Test SDF Network ; September 2015",
+      "VITE_FACTORY_CONTRACT_ID": "CDKZ4GWKTYA5SAW3MWEOSFCFXVPKATWXVZE2YKC3ADRN2O37Y5QTCAB3",
+      "VITE_ROUTER_CONTRACT_ID": "CDRMQNYL56H6T2Y7K42RETRYAES5NWY3LXPH32BAHNQYSOA5ON66MLHN",
+      "VITE_STAKING_CONTRACT_ID": "CABKPLO43CRGQRLERQCX3VDDOFMGQG7WQAVTPC6RT2X7GJBHMP3ON3MZ",
+      "VITE_AGGREGATOR_CONTRACT_ID": "CDVJIG57HTTKD3A4QD6JSTL6ODBAW26DDJABOF7ZRQR2MELLQT7UV6RS",
+      "VITE_BRIDGE_CONTRACT_ID": "CDG74RVU3NG7ZJI3EDLXR6XUWFVUZDQH4V63ZUQVXYOCJVIWPKYVBJIP",
+      "VITE_INDEXER_API_URL": "https://api.astroswap.io"
     }
   },
   "rewrites": [
@@ -32,6 +32,24 @@
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "X-XSS-Protection", "value": "1; mode=block" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
+      ]
+    },
+    {
+      "source": "/index.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
     }
-  ]
+  ],
+  "trailingSlash": false,
+  "cleanUrls": true
 }

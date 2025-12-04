@@ -1,9 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useWalletStore } from '../stores/walletStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { useTransactionStore } from '../stores/transactionStore';
 import { getAmountsOut, swapExactTokensForTokens, calculateOptimalPath } from '../lib/contracts';
 import { calculatePriceImpact, calculateMinimumReceived, debounce } from '../lib/utils';
+import { formatErrorForToast } from '../lib/errors';
+import { useSwapSimulation } from './useSimulation';
 import type { Token } from '../types';
 
 export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
@@ -16,6 +19,12 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
   const slippageTolerance = useSettingsStore((state) => state.slippageTolerance);
   const deadline = useSettingsStore((state) => state.deadline);
   const addToast = useSettingsStore((state) => state.addToast);
+  const addTransaction = useTransactionStore((state) => state.addTransaction);
+  const updateTransaction = useTransactionStore((state) => state.updateTransaction);
+  const queryClient = useQueryClient();
+
+  // Simulation hook for pre-validating transactions
+  const { simulateSwap, isSimulating, error: simulationError, reset: resetSimulation } = useSwapSimulation();
 
   // Fetch quote when input amount changes
   const { data: quoteData, isLoading: isLoadingQuote } = useQuery({
@@ -80,23 +89,58 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
         address
       );
     },
-    onSuccess: (txHash) => {
+    onMutate: () => {
+      // Add pending transaction to tracker
+      if (tokenIn && tokenOut) {
+        const pendingHash = `pending-${Date.now()}`;
+        addTransaction({
+          hash: pendingHash,
+          type: 'swap',
+          status: 'pending',
+          details: {
+            tokenIn: tokenIn.symbol,
+            tokenOut: tokenOut.symbol,
+            amountIn,
+            amountOut,
+          },
+        });
+        return { pendingHash };
+      }
+    },
+    onSuccess: (txHash, _variables, context) => {
+      // Update transaction with real hash and success status
+      if (context?.pendingHash) {
+        updateTransaction(context.pendingHash, {
+          hash: txHash,
+          status: 'success',
+        });
+      }
+
       addToast({
         type: 'success',
         title: 'Swap Successful',
-        description: `Transaction hash: ${txHash.slice(0, 10)}...`,
+        description: `Swapped ${amountIn} ${tokenIn?.symbol} for ${tokenOut?.symbol}`,
       });
+
+      // PERFORMANCE: Invalidate balance queries instead of polling
+      queryClient.invalidateQueries({ queryKey: ['tokenBalance'] });
+      queryClient.invalidateQueries({ queryKey: ['token-balances'] });
+      queryClient.invalidateQueries({ queryKey: ['allTokenBalances'] });
 
       // Reset form
       setAmountIn('');
       setAmountOut('');
     },
-    onError: (error) => {
-      addToast({
-        type: 'error',
-        title: 'Swap Failed',
-        description: error instanceof Error ? error.message : 'Unknown error occurred',
-      });
+    onError: (error, _variables, context) => {
+      // Update transaction to failed status
+      if (context?.pendingHash) {
+        updateTransaction(context.pendingHash, {
+          status: 'failed',
+        });
+      }
+
+      const errorToast = formatErrorForToast(error);
+      addToast(errorToast);
     },
   });
 
@@ -108,7 +152,37 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
     []
   );
 
-  const swap = useCallback(() => {
+  // Pre-validate swap with simulation before confirming
+  const validateSwap = useCallback(async (): Promise<boolean> => {
+    if (!tokenIn || !tokenOut || !amountIn || !amountOut || !address) {
+      return false;
+    }
+
+    const pathAddresses = route.map((t) => t.address);
+    const minimumReceived = calculateMinimumReceived(amountOut, slippageTolerance);
+    const deadlineTimestamp = Math.floor(Date.now() / 1000) + deadline * 60;
+
+    const result = await simulateSwap({
+      amountIn,
+      amountOutMin: minimumReceived,
+      path: pathAddresses,
+      to: address,
+      deadline: deadlineTimestamp,
+    });
+
+    if (!result.success && result.error) {
+      addToast({
+        type: 'error',
+        title: 'Swap Will Fail',
+        description: result.error,
+      });
+      return false;
+    }
+
+    return true;
+  }, [tokenIn, tokenOut, amountIn, amountOut, address, route, slippageTolerance, deadline, simulateSwap, addToast]);
+
+  const swap = useCallback(async () => {
     if (!tokenIn || !tokenOut || !amountIn || !amountOut) {
       addToast({
         type: 'warning',
@@ -118,8 +192,14 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
       return;
     }
 
+    // Pre-validate with simulation
+    const isValid = await validateSwap();
+    if (!isValid) {
+      return;
+    }
+
     swapMutation.mutate();
-  }, [tokenIn, tokenOut, amountIn, amountOut, swapMutation, addToast]);
+  }, [tokenIn, tokenOut, amountIn, amountOut, swapMutation, addToast, validateSwap]);
 
   const switchTokens = useCallback(() => {
     setAmountIn(amountOut);
@@ -133,9 +213,13 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
     route,
     isLoadingQuote,
     isSwapping: swapMutation.isPending,
+    isSimulating,
+    simulationError,
     setAmountIn: handleAmountInChange,
     setAmountOut,
     swap,
+    validateSwap,
     switchTokens,
+    resetSimulation,
   };
 }
