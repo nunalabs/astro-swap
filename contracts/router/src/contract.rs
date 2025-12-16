@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use astroswap_shared::{
     get_amount_in, get_amount_out, AstroSwapError, FactoryClient, PairClient, MIN_TRADE_AMOUNT,
 };
@@ -67,8 +69,10 @@ impl AstroSwapRouter {
         // Calculate amounts for the entire path
         let amounts = Self::get_amounts_out(&env, amount_in, &path)?;
 
-        // Check slippage
-        let final_amount = amounts.get(amounts.len() - 1).unwrap();
+        // Check slippage - use ok_or for safe indexing
+        let final_amount = amounts
+            .get(amounts.len() - 1)
+            .ok_or(AstroSwapError::InvalidPath)?;
         if final_amount < amount_out_min {
             return Err(AstroSwapError::SlippageExceeded);
         }
@@ -77,8 +81,8 @@ impl AstroSwapRouter {
         let factory = get_factory(&env);
         let factory_client = FactoryClient::new(&env, &factory);
 
-        let token_in = path.get(0).unwrap();
-        let token_out = path.get(1).unwrap();
+        let token_in = path.get(0).ok_or(AstroSwapError::InvalidPath)?;
+        let token_out = path.get(1).ok_or(AstroSwapError::InvalidPath)?;
 
         // Get pair address
         let pair_address = factory_client
@@ -90,7 +94,7 @@ impl AstroSwapRouter {
         token_in_client.transfer(&user, &pair_address, &amount_in);
 
         // Execute swaps along the path
-        Self::execute_swaps(&env, &factory, &path, &amounts, &user)?;
+        Self::execute_swaps(&env, &factory, &path, &amounts, &user, deadline)?;
 
         extend_instance_ttl(&env);
 
@@ -123,8 +127,8 @@ impl AstroSwapRouter {
         // Calculate amounts for the entire path (reverse calculation)
         let amounts = Self::get_amounts_in(&env, amount_out, &path)?;
 
-        // Check slippage
-        let required_amount = amounts.get(0).unwrap();
+        // Check slippage - use ok_or for safe indexing
+        let required_amount = amounts.get(0).ok_or(AstroSwapError::InvalidPath)?;
         if required_amount > amount_in_max {
             return Err(AstroSwapError::ExcessiveInputAmount);
         }
@@ -138,8 +142,8 @@ impl AstroSwapRouter {
         let factory = get_factory(&env);
         let factory_client = FactoryClient::new(&env, &factory);
 
-        let token_in = path.get(0).unwrap();
-        let token_out = path.get(1).unwrap();
+        let token_in = path.get(0).ok_or(AstroSwapError::InvalidPath)?;
+        let token_out = path.get(1).ok_or(AstroSwapError::InvalidPath)?;
 
         // Get pair address
         let pair_address = factory_client
@@ -151,7 +155,7 @@ impl AstroSwapRouter {
         token_in_client.transfer(&user, &pair_address, &required_amount);
 
         // Execute swaps along the path
-        Self::execute_swaps(&env, &factory, &path, &amounts, &user)?;
+        Self::execute_swaps(&env, &factory, &path, &amounts, &user, deadline)?;
 
         extend_instance_ttl(&env);
 
@@ -159,6 +163,7 @@ impl AstroSwapRouter {
     }
 
     /// Add liquidity to a pair
+    #[allow(clippy::too_many_arguments)]
     pub fn add_liquidity(
         env: Env,
         user: Address,
@@ -228,6 +233,7 @@ impl AstroSwapRouter {
     }
 
     /// Remove liquidity from a pair
+    #[allow(clippy::too_many_arguments)]
     pub fn remove_liquidity(
         env: Env,
         user: Address,
@@ -294,8 +300,9 @@ impl AstroSwapRouter {
         amounts.push_back(amount_in);
 
         for i in 0..(path.len() - 1) {
-            let token_in = path.get(i).unwrap();
-            let token_out = path.get(i + 1).unwrap();
+            // Safe indexing with proper error handling
+            let token_in = path.get(i).ok_or(AstroSwapError::InvalidPath)?;
+            let token_out = path.get(i + 1).ok_or(AstroSwapError::InvalidPath)?;
 
             // Get pair
             let pair_address = factory_client
@@ -314,7 +321,7 @@ impl AstroSwapRouter {
                 (reserve_1, reserve_0)
             };
 
-            let current_amount = amounts.get(i as u32).unwrap();
+            let current_amount = amounts.get(i).ok_or(AstroSwapError::InvalidPath)?;
             let amount_out_calc = get_amount_out(current_amount, reserve_in, reserve_out, fee_bps)?;
             amounts.push_back(amount_out_calc);
         }
@@ -346,10 +353,10 @@ impl AstroSwapRouter {
         // Set the final amount
         amounts.set(path_len - 1, amount_out);
 
-        // Calculate backwards
+        // Calculate backwards with safe indexing
         for i in (0..path_len - 1).rev() {
-            let token_in = path.get(i).unwrap();
-            let token_out = path.get(i + 1).unwrap();
+            let token_in = path.get(i).ok_or(AstroSwapError::InvalidPath)?;
+            let token_out = path.get(i + 1).ok_or(AstroSwapError::InvalidPath)?;
 
             // Get pair
             let pair_address = factory_client
@@ -368,10 +375,10 @@ impl AstroSwapRouter {
                 (reserve_1, reserve_0)
             };
 
-            let current_amount_out = amounts.get(i as u32 + 1).unwrap();
+            let current_amount_out = amounts.get(i + 1).ok_or(AstroSwapError::InvalidPath)?;
             let amount_in_calc =
                 get_amount_in(current_amount_out, reserve_in, reserve_out, fee_bps)?;
-            amounts.set(i as u32, amount_in_calc);
+            amounts.set(i, amount_in_calc);
         }
 
         Ok(amounts)
@@ -427,9 +434,18 @@ impl AstroSwapRouter {
         }
 
         // Check for duplicate tokens in path (would indicate a loop)
+        // Use safe indexing with early return on None (shouldn't happen given len checks)
         for i in 0..len {
+            let token_i = match path.get(i) {
+                Some(t) => t,
+                None => return Err(AstroSwapError::InvalidPath),
+            };
             for j in (i + 1)..len {
-                if path.get(i).unwrap() == path.get(j).unwrap() {
+                let token_j = match path.get(j) {
+                    Some(t) => t,
+                    None => return Err(AstroSwapError::InvalidPath),
+                };
+                if token_i == token_j {
                     return Err(AstroSwapError::InvalidPath);
                 }
             }
@@ -446,13 +462,15 @@ impl AstroSwapRouter {
         path: &Vec<Address>,
         amounts: &Vec<i128>,
         recipient: &Address,
+        deadline: u64,
     ) -> Result<(), AstroSwapError> {
         let factory_client = FactoryClient::new(env, factory);
 
         for i in 0..(path.len() - 1) {
-            let token_in = path.get(i).unwrap();
-            let token_out = path.get(i + 1).unwrap();
-            let min_out = amounts.get(i as u32 + 1).unwrap();
+            // Safe indexing with proper error handling
+            let token_in = path.get(i).ok_or(AstroSwapError::InvalidPath)?;
+            let token_out = path.get(i + 1).ok_or(AstroSwapError::InvalidPath)?;
+            let min_out = amounts.get(i + 1).ok_or(AstroSwapError::InvalidPath)?;
 
             // Get pair
             let pair_address = factory_client
@@ -469,15 +487,15 @@ impl AstroSwapRouter {
                 recipient.clone()
             } else {
                 // Get next pair address - output goes directly to next pair
-                let next_token_in = path.get(i + 1).unwrap();
-                let next_token_out = path.get(i + 2).unwrap();
+                let next_token_in = path.get(i + 1).ok_or(AstroSwapError::InvalidPath)?;
+                let next_token_out = path.get(i + 2).ok_or(AstroSwapError::InvalidPath)?;
                 factory_client
                     .get_pair(&next_token_in, &next_token_out)
                     .ok_or(AstroSwapError::PairNotFound)?
             };
 
             // Execute low-level swap (tokens already in pair from previous transfer/swap)
-            pair_client.swap_from_balance(&swap_recipient, &token_in, min_out)?;
+            pair_client.swap_from_balance(&swap_recipient, &token_in, min_out, deadline)?;
         }
 
         Ok(())
@@ -494,7 +512,7 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register_contract(None, AstroSwapRouter);
+        let contract_id = env.register(AstroSwapRouter, ());
         let client = AstroSwapRouterClient::new(&env, &contract_id);
 
         let factory = Address::generate(&env);

@@ -39,6 +39,7 @@ pub enum AstroSwapError {
     ExcessiveInputAmount = 303,
     InvalidPath = 304,
     PriceImpactTooHigh = 305,
+    AmountBelowMinimum = 306,
 
     // Staking errors (400-499)
     StakingPoolNotFound = 400,

@@ -176,7 +176,7 @@ impl AstroSwapOracle {
         admin.require_auth();
 
         // Validate feed ID
-        if feed_id.len() == 0 {
+        if feed_id.is_empty() {
             return Err(OracleError::InvalidFeedId);
         }
 
@@ -404,7 +404,7 @@ mod tests {
         let twap = client.get_twap(&token, &1200);
 
         // TWAP should be within the price range
-        assert!(twap >= 100_000_000 && twap <= 110_000_000);
+        assert!((100_000_000..=110_000_000).contains(&twap));
     }
 
     #[test]

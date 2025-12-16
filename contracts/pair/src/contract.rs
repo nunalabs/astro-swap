@@ -2,7 +2,7 @@ use astroswap_shared::{
     calculate_k, calculate_liquidity_tokens, calculate_withdrawal_amounts, emit_deposit, emit_swap,
     emit_withdraw, get_amount_in, get_amount_out, safe_sub, update_reserves_add, update_reserves_sub,
     update_reserves_swap, verify_k_invariant, AstroSwapError, PairInfo, DEFAULT_SWAP_FEE_BPS,
-    MINIMUM_LIQUIDITY,
+    MINIMUM_LIQUIDITY, MIN_TRADE_AMOUNT,
 };
 use soroban_sdk::{contract, contractimpl, token, Address, Env, String};
 
@@ -53,7 +53,7 @@ impl AstroSwapPair {
     /// Internal function to acquire reentrancy lock
     fn acquire_lock(env: &Env) -> Result<(), AstroSwapError> {
         if is_locked(env) {
-            return Err(AstroSwapError::InvalidArgument); // Reentrancy detected
+            return Err(AstroSwapError::Reentrancy);
         }
         set_locked(env, true);
         Ok(())
@@ -143,6 +143,7 @@ impl AstroSwapPair {
 
             if amount_1_optimal <= amount_1_desired {
                 if amount_1_optimal < amount_1_min {
+                    Self::release_lock(&env);
                     return Err(AstroSwapError::MinimumNotMet);
                 }
                 (amount_0_desired, amount_1_optimal)
@@ -150,6 +151,7 @@ impl AstroSwapPair {
                 let amount_0_optimal =
                     astroswap_shared::quote(amount_1_desired, reserve_1, reserve_0)?;
                 if amount_0_optimal > amount_0_desired || amount_0_optimal < amount_0_min {
+                    Self::release_lock(&env);
                     return Err(AstroSwapError::MinimumNotMet);
                 }
                 (amount_0_optimal, amount_1_desired)
@@ -171,8 +173,8 @@ impl AstroSwapPair {
         let token_0_client = token::Client::new(&env, &token_0);
         let token_1_client = token::Client::new(&env, &token_1);
 
-        token_0_client.transfer(&user, &env.current_contract_address(), &amount_0);
-        token_1_client.transfer(&user, &env.current_contract_address(), &amount_1);
+        token_0_client.transfer(&user, env.current_contract_address(), &amount_0);
+        token_1_client.transfer(&user, env.current_contract_address(), &amount_1);
 
         // Mint LP tokens
         if total_supply == 0 {
@@ -319,18 +321,32 @@ impl AstroSwapPair {
         token_in: Address,
         amount_in: i128,
         min_out: i128,
+        deadline: u64,
     ) -> Result<i128, AstroSwapError> {
         // Check pause status first
         Self::require_not_paused(&env)?;
+
+        // Check deadline (MEV protection)
+        if env.ledger().timestamp() > deadline {
+            return Err(AstroSwapError::DeadlineExpired);
+        }
 
         // Reentrancy guard
         Self::acquire_lock(&env)?;
 
         user.require_auth();
 
+        // Validate amount (must be positive and meet minimum trade amount)
         if amount_in <= 0 {
             Self::release_lock(&env);
             return Err(AstroSwapError::InvalidAmount);
+        }
+
+        // Minimum trade amount to prevent dust attacks (0.1 XLM = 1_000_000 stroops)
+        // Uses shared constant from astroswap_shared for consistency
+        if amount_in < MIN_TRADE_AMOUNT {
+            Self::release_lock(&env);
+            return Err(AstroSwapError::AmountBelowMinimum);
         }
 
         let token_0 = get_token_0(&env);
@@ -366,7 +382,7 @@ impl AstroSwapPair {
 
         // Transfer input tokens from user
         let token_in_client = token::Client::new(&env, &token_in);
-        token_in_client.transfer(&user, &env.current_contract_address(), &amount_in);
+        token_in_client.transfer(&user, env.current_contract_address(), &amount_in);
 
         // Transfer output tokens to user
         let token_out_client = token::Client::new(&env, &token_out);
@@ -407,6 +423,7 @@ impl AstroSwapPair {
     /// * `to` - Recipient of output tokens (next pair or final user)
     /// * `token_in` - Address of the input token
     /// * `min_out` - Minimum output amount (slippage protection)
+    /// * `deadline` - Timestamp after which the transaction reverts (MEV protection)
     ///
     /// # Returns
     /// * (amount_in, amount_out) - Actual amounts swapped
@@ -418,9 +435,15 @@ impl AstroSwapPair {
         to: Address,
         token_in: Address,
         min_out: i128,
+        deadline: u64,
     ) -> Result<(i128, i128), AstroSwapError> {
         // Check pause status first
         Self::require_not_paused(&env)?;
+
+        // Check deadline (MEV protection)
+        if env.ledger().timestamp() > deadline {
+            return Err(AstroSwapError::DeadlineExpired);
+        }
 
         // Reentrancy guard
         Self::acquire_lock(&env)?;
@@ -458,6 +481,13 @@ impl AstroSwapPair {
             Self::release_lock(&env);
             return Err(AstroSwapError::InvalidToken);
         };
+
+        // SECURITY: Validate minimum trade amount to prevent dust attacks
+        // This check was missing before, allowing small trades to bypass minimum validation
+        if amount_in < MIN_TRADE_AMOUNT {
+            Self::release_lock(&env);
+            return Err(AstroSwapError::AmountBelowMinimum);
+        }
 
         // Calculate output amount
         let fee_bps = get_fee_bps(&env);
@@ -776,7 +806,7 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register_contract(None, AstroSwapPair);
+        let contract_id = env.register(AstroSwapPair, ());
         let client = AstroSwapPairClient::new(&env, &contract_id);
 
         let factory = Address::generate(&env);
@@ -796,7 +826,7 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register_contract(None, AstroSwapPair);
+        let contract_id = env.register(AstroSwapPair, ());
         let client = AstroSwapPairClient::new(&env, &contract_id);
 
         let factory = Address::generate(&env);

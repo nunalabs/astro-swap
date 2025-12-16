@@ -327,7 +327,7 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register_contract(None, AstroSwapFactory);
+        let contract_id = env.register(AstroSwapFactory, ());
         let client = AstroSwapFactoryClient::new(&env, &contract_id);
 
         let admin = Address::generate(&env);
@@ -345,7 +345,7 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register_contract(None, AstroSwapFactory);
+        let contract_id = env.register(AstroSwapFactory, ());
         let client = AstroSwapFactoryClient::new(&env, &contract_id);
 
         let admin = Address::generate(&env);
@@ -364,7 +364,7 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register_contract(None, AstroSwapFactory);
+        let contract_id = env.register(AstroSwapFactory, ());
         let client = AstroSwapFactoryClient::new(&env, &contract_id);
 
         let admin = Address::generate(&env);

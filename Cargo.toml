@@ -10,8 +10,6 @@ members = [
     "contracts/shared",
     "contracts/oracle",
     "contracts/tests",
-    "packages/math",
-    "packages/curve",
     # Temporarily excluded due to pre-existing compilation errors:
     # "tests/e2e",
     # "tests/stress",

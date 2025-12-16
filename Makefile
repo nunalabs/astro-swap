@@ -7,8 +7,8 @@ NETWORK ?= testnet
 # Soroban CLI
 STELLAR_CLI = stellar
 
-# Build directory
-BUILD_DIR = target/wasm32v1-none/release
+# Build directory (matches cargo build --target wasm32-unknown-unknown)
+BUILD_DIR = target/wasm32-unknown-unknown/release
 
 # Contract names
 CONTRACTS = factory pair router staking aggregator bridge

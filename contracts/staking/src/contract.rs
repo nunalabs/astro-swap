@@ -146,7 +146,7 @@ impl AstroSwapStaking {
 
         // Transfer LP tokens from user
         let lp_client = token::Client::new(&env, &pool.lp_token);
-        lp_client.transfer(&user, &env.current_contract_address(), &amount);
+        lp_client.transfer(&user, env.current_contract_address(), &amount);
 
         // Update user stake
         user_stake.amount = safe_add(user_stake.amount, amount)?;
@@ -392,7 +392,7 @@ impl AstroSwapStaking {
         let reward_token = get_reward_token(&env).ok_or(AstroSwapError::NotInitialized)?;
         let token_client = token::Client::new(&env, &reward_token);
 
-        token_client.transfer(&funder, &env.current_contract_address(), &amount);
+        token_client.transfer(&funder, env.current_contract_address(), &amount);
 
         extend_instance_ttl(&env);
 
@@ -603,7 +603,7 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register_contract(None, AstroSwapStaking);
+        let contract_id = env.register(AstroSwapStaking, ());
         let client = AstroSwapStakingClient::new(&env, &contract_id);
 
         let admin = Address::generate(&env);

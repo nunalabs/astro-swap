@@ -170,8 +170,8 @@ impl AstroSwapBridge {
         let quote_client = token::Client::new(&env, &quote_token);
 
         // Transfer to this contract first
-        token_client.transfer(&caller, &env.current_contract_address(), &token_amount);
-        quote_client.transfer(&caller, &env.current_contract_address(), &quote_amount);
+        token_client.transfer(&caller, env.current_contract_address(), &token_amount);
+        quote_client.transfer(&caller, env.current_contract_address(), &quote_amount);
 
         // Approve pair contract to take tokens
         token_client.approve(

@@ -135,7 +135,7 @@ impl AstroSwapAggregator {
         }
 
         // Execute the route
-        let actual_out = match Self::execute_route(&env, &user, &route, amount_in) {
+        let actual_out = match Self::execute_route(&env, &user, &route, amount_in, deadline) {
             Ok(out) => out,
             Err(e) => {
                 Self::release_lock(&env);
@@ -183,7 +183,7 @@ impl AstroSwapAggregator {
         }
 
         // Execute the route
-        let actual_out = match Self::execute_route(&env, &user, &route, amount_in) {
+        let actual_out = match Self::execute_route(&env, &user, &route, amount_in, deadline) {
             Ok(out) => out,
             Err(e) => {
                 Self::release_lock(&env);
@@ -640,6 +640,7 @@ impl AstroSwapAggregator {
         user: &Address,
         route: &SwapRoute,
         amount_in: i128,
+        deadline: u64,
     ) -> Result<i128, AstroSwapError> {
         if route.steps.is_empty() {
             return Err(AstroSwapError::InvalidPath);
@@ -701,6 +702,7 @@ impl AstroSwapAggregator {
                 current_amount,
                 min_hop_out,
                 &recipient,
+                deadline,
             )?;
 
             // SECURITY: Validate per-hop output against expectations
@@ -713,6 +715,7 @@ impl AstroSwapAggregator {
     }
 
     /// Execute a swap on a specific protocol with per-hop slippage protection
+    #[allow(clippy::too_many_arguments)]
     fn execute_protocol_swap(
         env: &Env,
         protocol_id: u32,
@@ -722,6 +725,7 @@ impl AstroSwapAggregator {
         _amount_in: i128,
         min_out: i128,
         recipient: &Address,
+        deadline: u64,
     ) -> Result<i128, AstroSwapError> {
         // For AstroSwap, use the pair's swap_from_balance function
         // (tokens already transferred to pool in execute_route)
@@ -729,7 +733,7 @@ impl AstroSwapAggregator {
             let pair_client = PairClient::new(env, pool);
             // SECURITY: Pass per-hop minimum output for slippage protection
             let (_amount_in, amount_out) =
-                pair_client.swap_from_balance(recipient, token_in, min_out)?;
+                pair_client.swap_from_balance(recipient, token_in, min_out, deadline)?;
             return Ok(amount_out);
         }
 

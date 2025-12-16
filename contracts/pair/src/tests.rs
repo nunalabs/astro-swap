@@ -1,11 +1,12 @@
-#![cfg(test)]
-
 use crate::contract::{AstroSwapPair, AstroSwapPairClient};
 use soroban_sdk::{
-    testutils::{Address as _, Ledger, LedgerInfo},
+    testutils::Address as _,
     token::{Client as TokenClient, StellarAssetClient},
     Address, Env,
 };
+
+// Future deadline for swap tests (very far in the future)
+const FAR_FUTURE_DEADLINE: u64 = 9_999_999_999;
 
 // Helper to create a token
 fn create_token<'a>(env: &Env, admin: &Address) -> (TokenClient<'a>, Address) {
@@ -15,7 +16,7 @@ fn create_token<'a>(env: &Env, admin: &Address) -> (TokenClient<'a>, Address) {
 }
 
 // Helper to mint tokens
-fn mint_token(env: &Env, token_addr: &Address, admin: &Address, to: &Address, amount: i128) {
+fn mint_token(env: &Env, token_addr: &Address, _admin: &Address, to: &Address, amount: i128) {
     let sac = StellarAssetClient::new(env, token_addr);
     sac.mint(to, &amount);
 }
@@ -24,9 +25,9 @@ fn mint_token(env: &Env, token_addr: &Address, admin: &Address, to: &Address, am
 fn setup_pair_with_liquidity(
     env: &Env,
 ) -> (
-    AstroSwapPairClient,
-    TokenClient,
-    TokenClient,
+    AstroSwapPairClient<'_>,
+    TokenClient<'_>,
+    TokenClient<'_>,
     Address,
     Address,
     Address,
@@ -39,14 +40,14 @@ fn setup_pair_with_liquidity(
     let (token_1_client, token_1_addr) = create_token(env, &admin);
 
     // Register and initialize pair
-    let pair_addr = env.register_contract(None, AstroSwapPair);
+    let pair_addr = env.register(AstroSwapPair, ());
     let pair_client = AstroSwapPairClient::new(env, &pair_addr);
 
     pair_client.initialize(&factory, &token_0_addr, &token_1_addr);
 
-    // Mint tokens to user
-    mint_token(env, &token_0_addr, &admin, &user, 1_000_000_0000000);
-    mint_token(env, &token_1_addr, &admin, &user, 1_000_000_0000000);
+    // Mint tokens to user (10_000_000_000_000 = 1M tokens with 7 decimals)
+    mint_token(env, &token_0_addr, &admin, &user, 10_000_000_000_000);
+    mint_token(env, &token_1_addr, &admin, &user, 10_000_000_000_000);
 
     (
         pair_client,
@@ -69,7 +70,7 @@ fn test_initialize_success() {
     let token_0 = Address::generate(&env);
     let token_1 = Address::generate(&env);
 
-    let contract_id = env.register_contract(None, AstroSwapPair);
+    let contract_id = env.register(AstroSwapPair, ());
     let client = AstroSwapPairClient::new(&env, &contract_id);
 
     client.initialize(&factory, &token_0, &token_1);
@@ -89,7 +90,7 @@ fn test_initialize_with_same_token_fails() {
     let factory = Address::generate(&env);
     let token = Address::generate(&env);
 
-    let contract_id = env.register_contract(None, AstroSwapPair);
+    let contract_id = env.register(AstroSwapPair, ());
     let client = AstroSwapPairClient::new(&env, &contract_id);
 
     // Should fail with SameToken error
@@ -106,7 +107,7 @@ fn test_double_initialize_fails() {
     let token_0 = Address::generate(&env);
     let token_1 = Address::generate(&env);
 
-    let contract_id = env.register_contract(None, AstroSwapPair);
+    let contract_id = env.register(AstroSwapPair, ());
     let client = AstroSwapPairClient::new(&env, &contract_id);
 
     // First initialization succeeds
@@ -124,7 +125,7 @@ fn test_first_deposit_success() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (pair_client, token_0_client, token_1_client, token_0_addr, token_1_addr, user) =
+    let (pair_client, _token_0_client, _token_1_client, _token_0_addr, _token_1_addr, user) =
         setup_pair_with_liquidity(&env);
 
     let amount_0 = 100_0000000i128; // 100 tokens
@@ -157,13 +158,6 @@ fn test_subsequent_deposit_maintains_ratio() {
     // First deposit
     pair_client.deposit(&user, &100_0000000, &200_0000000, &0, &0);
 
-    let user2 = Address::generate(&env);
-    // Mint to user2 (for testing, we can use the mock)
-    let admin = Address::generate(&env);
-    let (_, token_0_addr) = create_token(&env, &admin);
-    let (_, token_1_addr) = create_token(&env, &admin);
-
-    // For this test, we use the same user
     // Second deposit - should maintain 1:2 ratio
     let result = pair_client.deposit(&user, &50_0000000, &200_0000000, &0, &0);
 
@@ -223,7 +217,7 @@ fn test_withdraw_success() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (pair_client, token_0_client, token_1_client, _, _, user) =
+    let (pair_client, _token_0_client, _token_1_client, _, _, user) =
         setup_pair_with_liquidity(&env);
 
     // First deposit
@@ -319,7 +313,7 @@ fn test_swap_success() {
 
     // Swap
     let amount_in = 10_0000000i128;
-    let result = pair_client.swap(&user, &token_0_addr, &amount_in, &0);
+    let result = pair_client.swap(&user, &token_0_addr, &amount_in, &0, &FAR_FUTURE_DEADLINE);
 
     assert!(result > 0);
     // With fees, should be slightly less than input
@@ -336,7 +330,7 @@ fn test_swap_respects_slippage() {
     pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
 
     // Try swap with very high minimum - should fail
-    let result = pair_client.try_swap(&user, &token_0_addr, &10_0000000, &50_0000000);
+    let result = pair_client.try_swap(&user, &token_0_addr, &10_0000000, &50_0000000, &FAR_FUTURE_DEADLINE);
     assert!(result.is_err());
 }
 
@@ -349,7 +343,7 @@ fn test_swap_zero_amount_fails() {
 
     pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
 
-    let result = pair_client.try_swap(&user, &token_0_addr, &0, &0);
+    let result = pair_client.try_swap(&user, &token_0_addr, &0, &0, &FAR_FUTURE_DEADLINE);
     assert!(result.is_err());
 }
 
@@ -363,7 +357,7 @@ fn test_swap_invalid_token_fails() {
     pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
 
     let invalid_token = Address::generate(&env);
-    let result = pair_client.try_swap(&user, &invalid_token, &10_0000000, &0);
+    let result = pair_client.try_swap(&user, &invalid_token, &10_0000000, &0, &FAR_FUTURE_DEADLINE);
     assert!(result.is_err());
 }
 
@@ -378,7 +372,7 @@ fn test_swap_maintains_k_invariant() {
 
     let k_before = pair_client.k_last();
 
-    pair_client.swap(&user, &token_0_addr, &10_0000000, &0);
+    pair_client.swap(&user, &token_0_addr, &10_0000000, &0, &FAR_FUTURE_DEADLINE);
 
     let k_after = pair_client.k_last();
 
@@ -418,7 +412,7 @@ fn test_pause_blocks_swap() {
     pair_client.set_paused(&true);
 
     // Swap should fail
-    let result = pair_client.try_swap(&user, &token_0_addr, &10_0000000, &0);
+    let result = pair_client.try_swap(&user, &token_0_addr, &10_0000000, &0, &FAR_FUTURE_DEADLINE);
     assert!(result.is_err());
 }
 
@@ -438,7 +432,7 @@ fn test_unpause_restores_functionality() {
     assert!(!pair_client.is_paused());
 
     // Swap should work
-    let result = pair_client.swap(&user, &token_0_addr, &10_0000000, &0);
+    let result = pair_client.swap(&user, &token_0_addr, &10_0000000, &0, &FAR_FUTURE_DEADLINE);
     assert!(result > 0);
 }
 
@@ -572,7 +566,7 @@ fn test_large_swap_high_price_impact() {
 
     // Large swap (50% of pool)
     let amount_in = 50_0000000i128;
-    let result = pair_client.swap(&user, &token_0_addr, &amount_in, &0);
+    let result = pair_client.swap(&user, &token_0_addr, &amount_in, &0, &FAR_FUTURE_DEADLINE);
 
     // Should get significantly less than 50 due to price impact
     assert!(result < 50_0000000);
@@ -587,18 +581,18 @@ fn test_multiple_swaps_in_same_direction() {
 
     let (pair_client, _, _, token_0_addr, _, user) = setup_pair_with_liquidity(&env);
 
-    pair_client.deposit(&user, &1000_0000000, &1000_0000000, &0, &0);
+    pair_client.deposit(&user, &10_000_000_000, &10_000_000_000, &0, &0);
 
     // Multiple small swaps
     let mut total_out = 0i128;
     for _ in 0..5 {
-        let out = pair_client.swap(&user, &token_0_addr, &10_0000000, &0);
+        let out = pair_client.swap(&user, &token_0_addr, &10_0000000, &0, &FAR_FUTURE_DEADLINE);
         total_out += out;
     }
 
     // Total should be less than a single 50 token swap (due to price moving)
     // Note: get_amount_out returns i128 directly when called without try_
-    let single_swap_out = pair_client.get_amount_out(&50_0000000, &token_0_addr);
+    let _single_swap_out = pair_client.get_amount_out(&50_0000000, &token_0_addr);
 
     // Each individual swap gets worse rate as price moves
     // But with proper AMM, total should still be meaningful
@@ -613,7 +607,7 @@ fn test_minimum_liquidity_locked() {
     let (pair_client, _, _, _, _, user) = setup_pair_with_liquidity(&env);
 
     // First deposit
-    let result = pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    let _result = pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
 
     // Total supply should be more than user's balance (MINIMUM_LIQUIDITY locked)
     let total_supply = pair_client.total_supply();

@@ -177,13 +177,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "astroswap-curve"
-version = "0.1.0"
-dependencies = [
- "soroban-sdk",
-]
-
-[[package]]
 name = "astroswap-factory"
 version = "0.1.0"
 dependencies = [
@@ -204,13 +197,6 @@ dependencies = [
  "astroswap-staking",
  "soroban-sdk",
  "soroban-token-sdk",
-]
-
-[[package]]
-name = "astroswap-math"
-version = "0.1.0"
-dependencies = [
- "soroban-sdk",
 ]
 
 [[package]]
