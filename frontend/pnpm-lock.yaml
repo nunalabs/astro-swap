@@ -11,6 +11,9 @@ importers:
       '@creit.tech/stellar-wallets-kit':
         specifier: ^1.9.5
         version: 1.9.5(@solana/sysvars@2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3))(@stellar/stellar-base@13.1.0)(@stellar/stellar-sdk@12.3.0)(@trezor/connect@9.6.2(@solana/sysvars@2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3))(bufferutil@4.0.9)(fastestsmallesttextencoderdecoder@1.0.22)(tslib@2.8.1)(typescript@5.9.3)(utf-8-validate@5.0.10)(ws@7.5.10(bufferutil@4.0.9)(utf-8-validate@5.0.10)))(@types/react@18.3.27)(bufferutil@4.0.9)(fastestsmallesttextencoderdecoder@1.0.22)(near-api-js@5.1.1)(react@18.3.1)(tslib@2.8.1)(typescript@5.9.3)(utf-8-validate@5.0.10)(ws@7.5.10(bufferutil@4.0.9)(utf-8-validate@5.0.10))
+      '@sentry/react':
+        specifier: ^10.31.0
+        version: 10.31.0(react@18.3.1)
       '@stellar/stellar-sdk':
         specifier: ^12.1.0
         version: 12.3.0
@@ -720,6 +723,36 @@ packages:
 
   '@scure/bip39@1.6.0':
     resolution: {integrity: sha512-+lF0BbLiJNwVlev4eKelw1WWLaiKXw7sSl8T6FvBlWkdX+94aGJ4o8XjUdlyhTCjd8c+B3KT3JfS8P0bLRNU6A==}
+
+  '@sentry-internal/browser-utils@10.31.0':
+    resolution: {integrity: sha512-2Pvk0aRA0M/wiUj2K00mhw8dhD/zRhGKK9xQVAPtSz9cbKO/0WIS5dMAX0bfNvYVVMQPrQM46BmEwxeMMuY6HQ==}
+    engines: {node: '>=18'}
+
+  '@sentry-internal/feedback@10.31.0':
+    resolution: {integrity: sha512-uLmh6n0Ax/yjVO4FROpeVqzEJVMgIxDsnmKlAoQ4/HYmc2wQQbJmdIgjzZN2ruelaYEaQV7iouSYLZv4wdujOQ==}
+    engines: {node: '>=18'}
+
+  '@sentry-internal/replay-canvas@10.31.0':
+    resolution: {integrity: sha512-mR6t6YNMLKndn1FvaDoOTWA15LfatcC/RMXkKYggULJWxMOs1/TCowjVidPXb/2JtfeHQvbJg5dH/hM+wW5c1Q==}
+    engines: {node: '>=18'}
+
+  '@sentry-internal/replay@10.31.0':
+    resolution: {integrity: sha512-1rChhtgSSq83vef/ZID5vNRGgCVOdi3c239J3T0GWUSrmZAWHFWohqosT1jBYLIcBQia1jjJjl7j0QX0UNpSsg==}
+    engines: {node: '>=18'}
+
+  '@sentry/browser@10.31.0':
+    resolution: {integrity: sha512-r+unS+yzVn4lh+jRGtR1rhfcPFsSJXDzW9ngn8+VmgzuvBMLVNSVEwCO+HsghnFfWorrXYZ6GVhemsGHK8gsfg==}
+    engines: {node: '>=18'}
+
+  '@sentry/core@10.31.0':
+    resolution: {integrity: sha512-VTSXdyhnu3CNaSwhp/CchZRCKh1fa7byP+KClApthsppQ57w7OjXN8dDUf38K1ZCsfdTEvdEU4qCL/WnAEbd+g==}
+    engines: {node: '>=18'}
+
+  '@sentry/react@10.31.0':
+    resolution: {integrity: sha512-1Y+K/s64f/UBH4guU0F5T+b9nWT2AoRd1nlQShGlGBT2WEihIcnnftSb3Wdl9/zLO2kzbXjc63G0D4dx6sUY/w==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      react: ^16.14.0 || 17.x || 18.x || 19.x
 
   '@sinclair/typebox@0.33.22':
     resolution: {integrity: sha512-auUj4k+f4pyrIVf4GW5UKquSZFHJWri06QgARy9C0t9ZTjJLIuNIrr1yl9bWcJWJ1Gz1vOvYN1D+QPaIlNMVkQ==}
@@ -2205,6 +2238,9 @@ packages:
 
   hmac-drbg@1.0.1:
     resolution: {integrity: sha512-Tti3gMqLdZfhOQY1Mzf/AanLiqh1WTiJgEj26ZuYQ9fbkLomzGchCws4FyrSd4VkpBfiNhaE1On+lOz894jvXg==}
+
+  hoist-non-react-statics@3.3.2:
+    resolution: {integrity: sha512-/gGivxi8JPKWNm/W0jSmzcMPpfpPLc3dY/6GxhX2hQ9iGj3aDfklV4ET7NjKpSinLpJ5vafa9iiGIEZg10SfBw==}
 
   http-errors@1.7.2:
     resolution: {integrity: sha512-uUQBt3H/cSIVfch6i1EuPNy/YsRSOUBXTVfZ+yR7Zjez3qjBz6i9+i4zjNaoqcoFVI4lQJ5plg63TvGfRSDCRg==}
@@ -4125,6 +4161,41 @@ snapshots:
     dependencies:
       '@noble/hashes': 1.8.0
       '@scure/base': 1.2.6
+
+  '@sentry-internal/browser-utils@10.31.0':
+    dependencies:
+      '@sentry/core': 10.31.0
+
+  '@sentry-internal/feedback@10.31.0':
+    dependencies:
+      '@sentry/core': 10.31.0
+
+  '@sentry-internal/replay-canvas@10.31.0':
+    dependencies:
+      '@sentry-internal/replay': 10.31.0
+      '@sentry/core': 10.31.0
+
+  '@sentry-internal/replay@10.31.0':
+    dependencies:
+      '@sentry-internal/browser-utils': 10.31.0
+      '@sentry/core': 10.31.0
+
+  '@sentry/browser@10.31.0':
+    dependencies:
+      '@sentry-internal/browser-utils': 10.31.0
+      '@sentry-internal/feedback': 10.31.0
+      '@sentry-internal/replay': 10.31.0
+      '@sentry-internal/replay-canvas': 10.31.0
+      '@sentry/core': 10.31.0
+
+  '@sentry/core@10.31.0': {}
+
+  '@sentry/react@10.31.0(react@18.3.1)':
+    dependencies:
+      '@sentry/browser': 10.31.0
+      '@sentry/core': 10.31.0
+      hoist-non-react-statics: 3.3.2
+      react: 18.3.1
 
   '@sinclair/typebox@0.33.22': {}
 
@@ -6221,6 +6292,10 @@ snapshots:
       hash.js: 1.1.7
       minimalistic-assert: 1.0.1
       minimalistic-crypto-utils: 1.0.1
+
+  hoist-non-react-statics@3.3.2:
+    dependencies:
+      react-is: 16.13.1
 
   http-errors@1.7.2:
     dependencies:

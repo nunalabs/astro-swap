@@ -78,6 +78,28 @@ export async function getReserves(
 }
 
 /**
+ * Pair Contract - Get total supply of LP tokens
+ */
+export async function getTotalSupply(
+  pairAddress: string,
+  sourceAddress: string
+): Promise<string> {
+  try {
+    const result = await callContract(
+      pairAddress,
+      'total_supply',
+      [],
+      sourceAddress
+    );
+
+    return String(result);
+  } catch (error) {
+    console.error('Error getting total supply:', error);
+    return '0';
+  }
+}
+
+/**
  * Router Contract - Get amounts out for exact input
  */
 export async function getAmountsOut(

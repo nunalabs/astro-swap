@@ -1,5 +1,6 @@
 import { Component, ReactNode } from 'react';
 import { Button } from './Button';
+import { captureError, addBreadcrumb } from '../../lib/sentry';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -42,7 +43,15 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       errorInfo: errorInfo.componentStack || null,
     });
 
-    // TODO: Send to error tracking service (Sentry, etc.)
+    // Send to Sentry error tracking
+    addBreadcrumb('React error boundary triggered', 'error', {
+      componentStack: errorInfo.componentStack,
+    });
+
+    captureError(error, {
+      componentStack: errorInfo.componentStack,
+      errorBoundary: true,
+    });
   }
 
   handleReset = (): void => {

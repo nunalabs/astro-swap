@@ -5,6 +5,7 @@ import { useTokenStore } from '../stores/tokenStore';
 import {
   getAllPairs,
   getReserves,
+  getTotalSupply,
   addLiquidity,
   removeLiquidity,
 } from '../lib/contracts';
@@ -41,8 +42,11 @@ export function usePool() {
             return null;
           }
 
-          // Get reserves
-          const reserves = await getReserves(pairAddress, address);
+          // Get reserves and total supply in parallel
+          const [reserves, totalSupply] = await Promise.all([
+            getReserves(pairAddress, address),
+            getTotalSupply(pairAddress, address),
+          ]);
 
           // Get token metadata (check cache first)
           let token0: Token | null = getToken(pairTokens.token0) || null;
@@ -80,7 +84,7 @@ export function usePool() {
             token1,
             reserve0: reserves?.reserve0 || '0',
             reserve1: reserves?.reserve1 || '0',
-            totalSupply: '0', // TODO: fetch from pair contract
+            totalSupply,
             lpTokenAddress: pairAddress,
             fee: 30, // 0.30%
           } as Pool;
