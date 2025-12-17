@@ -6,12 +6,12 @@ use super::StressScenario;
 use crate::config::StressConfig;
 use crate::metrics::{MetricsCollector, OperationType};
 use crate::utils::{AccountPool, TokenManager};
+use crate::pair_wasm;
 use astroswap_factory::{AstroSwapFactory, AstroSwapFactoryClient};
-use astroswap_pair::AstroSwapPair;
 use astroswap_router::{AstroSwapRouter, AstroSwapRouterClient};
 use astroswap_shared::interfaces::PairClient;
 use rand::Rng;
-use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
+use soroban_sdk::{testutils::Address as _, Address, Env};
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -36,7 +36,8 @@ impl SwapLoadScenario {
         Vec<Address>,
     ) {
         let env = Env::default();
-        env.mock_all_auths();
+        // Use mock_all_auths_allowing_non_root_auth for contract-to-contract calls (SDK 23)
+        env.mock_all_auths_allowing_non_root_auth();
 
         let admin = Address::generate(&env);
 
@@ -45,14 +46,13 @@ impl SwapLoadScenario {
         token_manager.create_tokens(&env, &admin, config.num_pairs * 2, 10_000_000_0000000);
 
         // Create account pool
-        let mut account_pool = AccountPool::new(&env, config.num_accounts);
+        let account_pool = AccountPool::new(&env, config.num_accounts);
 
         // Distribute tokens to all accounts
         token_manager.distribute(&admin, account_pool.all(), 100_000_0000000);
 
-        // Deploy pair WASM
-        let pair_wasm = env.deployer().upload_contract_wasm(AstroSwapPair);
-        let pair_wasm_hash = BytesN::from_array(&env, &pair_wasm.into());
+        // Deploy pair WASM (SDK 23: use WASM bytes directly)
+        let pair_wasm_hash = env.deployer().upload_contract_wasm(pair_wasm::WASM);
 
         // Deploy factory
         let factory_address = env.register(AstroSwapFactory, ());
@@ -74,19 +74,19 @@ impl SwapLoadScenario {
                 .get_pair_addresses(token_a_idx, token_b_idx)
                 .unwrap();
 
-            // Create pair
-            let pair_addr = factory.create_pair(&token_a_addr, &token_b_addr).unwrap();
+            // Create pair (SDK 23: client method returns Address directly, use try_create_pair for Result)
+            let pair_addr = factory.create_pair(&token_a_addr, &token_b_addr);
             pair_addresses.push(pair_addr.clone());
 
-            // Add initial liquidity
+            // Add initial liquidity (SDK 23: i128 params need references)
             let _ = router.add_liquidity(
                 &admin,
                 &token_a_addr,
                 &token_b_addr,
-                1_000_000_0000000,
-                1_000_000_0000000,
-                0,
-                0,
+                &1_000_000_0000000,
+                &1_000_000_0000000,
+                &0,
+                &0,
                 &(env.ledger().timestamp() + 3600),
             );
         }
@@ -146,7 +146,7 @@ impl Default for SwapLoadScenario {
 
 impl StressScenario for SwapLoadScenario {
     fn run(&self, config: &StressConfig, collector: &MetricsCollector) {
-        let (env, _admin, token_manager, mut account_pool, _factory, _router, pair_addresses) =
+        let (env, _admin, _token_manager, account_pool, _factory, _router, pair_addresses) =
             self.setup_environment(config);
 
         let test_start = Instant::now();

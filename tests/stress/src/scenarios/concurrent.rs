@@ -6,12 +6,12 @@ use super::StressScenario;
 use crate::config::StressConfig;
 use crate::metrics::{MetricsCollector, OperationType};
 use crate::utils::{AccountPool, TokenManager};
+use crate::pair_wasm;
 use astroswap_factory::{AstroSwapFactory, AstroSwapFactoryClient};
-use astroswap_pair::AstroSwapPair;
 use astroswap_router::{AstroSwapRouter, AstroSwapRouterClient};
 use astroswap_shared::interfaces::PairClient;
 use rand::Rng;
-use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
+use soroban_sdk::{testutils::Address as _, Address, Env};
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -43,7 +43,8 @@ impl ConcurrentScenario {
         Vec<Address>,
     ) {
         let env = Env::default();
-        env.mock_all_auths();
+        // Use mock_all_auths_allowing_non_root_auth for contract-to-contract calls (SDK 23)
+        env.mock_all_auths_allowing_non_root_auth();
 
         let admin = Address::generate(&env);
 
@@ -55,9 +56,8 @@ impl ConcurrentScenario {
         let account_pool = AccountPool::new(&env, config.num_accounts);
         token_manager.distribute(&admin, account_pool.all(), 10_000_000_0000000);
 
-        // Deploy contracts
-        let pair_wasm = env.deployer().upload_contract_wasm(AstroSwapPair);
-        let pair_wasm_hash = BytesN::from_array(&env, &pair_wasm.into());
+        // Deploy contracts (SDK 23: use WASM bytes directly)
+        let pair_wasm_hash = env.deployer().upload_contract_wasm(pair_wasm::WASM);
 
         let factory_address = env.register(AstroSwapFactory, ());
         let factory = AstroSwapFactoryClient::new(&env, &factory_address);
@@ -77,18 +77,19 @@ impl ConcurrentScenario {
                 .get_pair_addresses(token_a_idx, token_b_idx)
                 .unwrap();
 
-            let pair_addr = factory.create_pair(&token_a_addr, &token_b_addr).unwrap();
+            // SDK 23: client method returns Address directly
+            let pair_addr = factory.create_pair(&token_a_addr, &token_b_addr);
             pair_addresses.push(pair_addr.clone());
 
-            // Add substantial initial liquidity
+            // Add substantial initial liquidity (SDK 23: i128 params need references)
             let _ = router.add_liquidity(
                 &admin,
                 &token_a_addr,
                 &token_b_addr,
-                10_000_000_0000000,
-                10_000_000_0000000,
-                0,
-                0,
+                &10_000_000_0000000,
+                &10_000_000_0000000,
+                &0,
+                &0,
                 &(env.ledger().timestamp() + 3600),
             );
         }
@@ -216,7 +217,7 @@ impl Default for ConcurrentScenario {
 
 impl StressScenario for ConcurrentScenario {
     fn run(&self, config: &StressConfig, collector: &MetricsCollector) {
-        let (env, _admin, _token_manager, mut account_pool, _factory, _router, pair_addresses) =
+        let (env, _admin, _token_manager, account_pool, _factory, _router, pair_addresses) =
             self.setup_environment(config);
 
         let test_start = Instant::now();
@@ -226,8 +227,8 @@ impl StressScenario for ConcurrentScenario {
         let mut rng = rand::thread_rng();
         let mut operation_count = 0u64;
 
-        // Track LP positions for remove operations
-        let mut lp_positions: HashMap<(Address, Address), i128> = HashMap::new();
+        // Track LP positions for remove operations (use string keys - Address doesn't impl Hash)
+        let mut lp_positions: HashMap<String, i128> = HashMap::new();
 
         println!(
             "Starting concurrent operations test: {} workers for {} seconds",
@@ -270,13 +271,15 @@ impl StressScenario for ConcurrentScenario {
                         // Update position tracking
                         let pair_client = PairClient::new(&env, pair_address);
                         let balance = pair_client.balance(&user);
+                        let position_key = format!("{}:{}", user.to_string(), pair_address.to_string());
                         if balance > 0 {
-                            lp_positions.insert((user.clone(), pair_address.clone()), balance);
+                            lp_positions.insert(position_key, balance);
                         }
                     }
                     Operation::RemoveLiquidity => {
                         // Only remove if user has a position
-                        if let Some(&shares) = lp_positions.get(&(user.clone(), pair_address.clone())) {
+                        let position_key = format!("{}:{}", user.to_string(), pair_address.to_string());
+                        if let Some(&shares) = lp_positions.get(&position_key) {
                             if shares > 0 {
                                 let remove_shares = rng.gen_range(1..=shares);
                                 self.execute_remove_liquidity(
@@ -291,9 +294,9 @@ impl StressScenario for ConcurrentScenario {
                                 let pair_client = PairClient::new(&env, pair_address);
                                 let new_balance = pair_client.balance(&user);
                                 if new_balance > 0 {
-                                    lp_positions.insert((user.clone(), pair_address.clone()), new_balance);
+                                    lp_positions.insert(position_key, new_balance);
                                 } else {
-                                    lp_positions.remove(&(user.clone(), pair_address.clone()));
+                                    lp_positions.remove(&position_key);
                                 }
                             }
                         }

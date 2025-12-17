@@ -2,7 +2,7 @@
 //!
 //! Utilities for generating and managing test accounts for stress testing.
 
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{testutils::Address as _, Address, Env};
 use std::collections::HashMap;
 
 /// Manages a pool of test accounts

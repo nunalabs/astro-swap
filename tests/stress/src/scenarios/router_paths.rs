@@ -6,11 +6,11 @@ use super::StressScenario;
 use crate::config::StressConfig;
 use crate::metrics::{MetricsCollector, OperationType};
 use crate::utils::{AccountPool, TokenManager};
+use crate::pair_wasm;
 use astroswap_factory::{AstroSwapFactory, AstroSwapFactoryClient};
-use astroswap_pair::AstroSwapPair;
 use astroswap_router::{AstroSwapRouter, AstroSwapRouterClient};
 use rand::Rng;
-use soroban_sdk::{testutils::Address as _, vec as soroban_vec, Address, BytesN, Env, Vec as SorobanVec};
+use soroban_sdk::{testutils::Address as _, vec as soroban_vec, Address, Env, Vec as SorobanVec};
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -35,7 +35,8 @@ impl RouterPathsScenario {
         Vec<Vec<Address>>,
     ) {
         let env = Env::default();
-        env.mock_all_auths();
+        // Use mock_all_auths_allowing_non_root_auth for contract-to-contract calls (SDK 23)
+        env.mock_all_auths_allowing_non_root_auth();
 
         let admin = Address::generate(&env);
 
@@ -48,9 +49,8 @@ impl RouterPathsScenario {
         let account_pool = AccountPool::new(&env, config.num_accounts);
         token_manager.distribute(&admin, account_pool.all(), 10_000_000_0000000);
 
-        // Deploy contracts
-        let pair_wasm = env.deployer().upload_contract_wasm(AstroSwapPair);
-        let pair_wasm_hash = BytesN::from_array(&env, &pair_wasm.into());
+        // Deploy pair WASM (SDK 23: use WASM bytes directly)
+        let pair_wasm_hash = env.deployer().upload_contract_wasm(pair_wasm::WASM);
 
         let factory_address = env.register(AstroSwapFactory, ());
         let factory = AstroSwapFactoryClient::new(&env, &factory_address);
@@ -69,19 +69,18 @@ impl RouterPathsScenario {
             let token_a = token_manager.get(i as usize).unwrap();
             let token_b = token_manager.get((i + 1) as usize).unwrap();
 
-            factory
-                .create_pair(&token_a.address, &token_b.address)
-                .unwrap();
+            // SDK 23: client method returns Address directly
+            factory.create_pair(&token_a.address, &token_b.address);
 
-            // Add liquidity
+            // Add liquidity (SDK 23: i128 params need references)
             let _ = router.add_liquidity(
                 &admin,
                 &token_a.address,
                 &token_b.address,
-                10_000_000_0000000,
-                10_000_000_0000000,
-                0,
-                0,
+                &10_000_000_0000000,
+                &10_000_000_0000000,
+                &0,
+                &0,
                 &(env.ledger().timestamp() + 3600),
             );
         }
@@ -122,12 +121,13 @@ impl RouterPathsScenario {
 
         let deadline = env.ledger().timestamp() + 3600;
 
+        // SDK 23: i128 params need references, client returns Vec<i128> directly (panics on error)
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            router.swap_exact_tokens_for_tokens(user, amount_in, min_out, &soroban_path, &deadline)
+            router.swap_exact_tokens_for_tokens(user, &amount_in, &min_out, &soroban_path, &deadline)
         }));
 
         match result {
-            Ok(Ok(amounts)) => {
+            Ok(amounts) => {
                 let mut metadata = HashMap::new();
                 metadata.insert("hops".to_string(), (path.len() - 1).to_string());
                 metadata.insert("amount_in".to_string(), amount_in.to_string());
@@ -142,21 +142,12 @@ impl RouterPathsScenario {
                 }
                 timer.success(OperationType::MultiHopSwap, metadata);
             }
-            Ok(Err(e)) => {
-                let mut metadata = HashMap::new();
-                metadata.insert("hops".to_string(), (path.len() - 1).to_string());
-                timer.error(
-                    OperationType::MultiHopSwap,
-                    format!("Multi-hop swap failed: {:?}", e),
-                    metadata,
-                );
-            }
             Err(_) => {
                 let mut metadata = HashMap::new();
                 metadata.insert("hops".to_string(), (path.len() - 1).to_string());
                 timer.error(
                     OperationType::MultiHopSwap,
-                    "Multi-hop swap panicked".to_string(),
+                    "Multi-hop swap failed".to_string(),
                     metadata,
                 );
             }
@@ -172,7 +163,7 @@ impl Default for RouterPathsScenario {
 
 impl StressScenario for RouterPathsScenario {
     fn run(&self, config: &StressConfig, collector: &MetricsCollector) {
-        let (env, _admin, _token_manager, mut account_pool, _factory, router, paths) =
+        let (env, _admin, _token_manager, account_pool, _factory, router, paths) =
             self.setup_environment(config);
 
         let test_start = Instant::now();

@@ -15,6 +15,11 @@ pub mod scenarios;
 pub mod metrics;
 pub mod utils;
 
+// WASM bytes for pair contract deployment (SDK 23 requirement)
+pub mod pair_wasm {
+    pub const WASM: &[u8] = include_bytes!("../../../target/wasm32v1-none/release/astroswap_pair.wasm");
+}
+
 // Re-exports for convenience
 pub use config::{Network, Scenario, StressConfig};
 pub use scenarios::StressScenario;

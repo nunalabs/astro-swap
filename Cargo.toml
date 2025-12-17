@@ -11,8 +11,7 @@ members = [
     "contracts/oracle",
     "contracts/tests",
     "tests/e2e",
-    # Temporarily excluded:
-    # "tests/stress",
+    "tests/stress",
 ]
 
 [workspace.package]

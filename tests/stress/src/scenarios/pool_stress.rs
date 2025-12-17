@@ -6,11 +6,11 @@ use super::StressScenario;
 use crate::config::StressConfig;
 use crate::metrics::{MetricsCollector, OperationType};
 use crate::utils::{AccountPool, TokenManager};
+use crate::pair_wasm;
 use astroswap_factory::{AstroSwapFactory, AstroSwapFactoryClient};
-use astroswap_pair::AstroSwapPair;
 use astroswap_shared::interfaces::PairClient;
 use rand::Rng;
-use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
+use soroban_sdk::{testutils::Address as _, Address, Env};
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -34,7 +34,8 @@ impl PoolStressScenario {
         Vec<Address>,
     ) {
         let env = Env::default();
-        env.mock_all_auths();
+        // Use mock_all_auths_allowing_non_root_auth for contract-to-contract calls (SDK 23)
+        env.mock_all_auths_allowing_non_root_auth();
 
         let admin = Address::generate(&env);
 
@@ -49,9 +50,8 @@ impl PoolStressScenario {
         // Distribute tokens to all accounts
         token_manager.distribute(&admin, account_pool.all(), 10_000_000_0000000);
 
-        // Deploy pair WASM
-        let pair_wasm = env.deployer().upload_contract_wasm(AstroSwapPair);
-        let pair_wasm_hash = BytesN::from_array(&env, &pair_wasm.into());
+        // Deploy pair WASM (SDK 23: use WASM bytes directly)
+        let pair_wasm_hash = env.deployer().upload_contract_wasm(pair_wasm::WASM);
 
         // Deploy factory
         let factory_address = env.register(AstroSwapFactory, ());
@@ -68,7 +68,8 @@ impl PoolStressScenario {
                 .get_pair_addresses(token_a_idx, token_b_idx)
                 .unwrap();
 
-            let pair_addr = factory.create_pair(&token_a_addr, &token_b_addr).unwrap();
+            // SDK 23: client method returns Address directly
+            let pair_addr = factory.create_pair(&token_a_addr, &token_b_addr);
             pair_addresses.push(pair_addr);
         }
 
@@ -153,7 +154,7 @@ impl Default for PoolStressScenario {
 
 impl StressScenario for PoolStressScenario {
     fn run(&self, config: &StressConfig, collector: &MetricsCollector) {
-        let (env, _admin, _token_manager, mut account_pool, _factory, pair_addresses) =
+        let (env, _admin, _token_manager, account_pool, _factory, pair_addresses) =
             self.setup_environment(config);
 
         let test_start = Instant::now();
@@ -163,8 +164,8 @@ impl StressScenario for PoolStressScenario {
         let mut rng = rand::thread_rng();
         let mut operation_count = 0u64;
 
-        // Track LP positions per user per pool
-        let mut lp_positions: HashMap<(Address, Address), i128> = HashMap::new();
+        // Track LP positions per user per pool (use string keys - Address doesn't impl Hash)
+        let mut lp_positions: HashMap<String, i128> = HashMap::new();
 
         println!(
             "Starting pool stress test: {} pools for {} seconds",
@@ -188,8 +189,9 @@ impl StressScenario for PoolStressScenario {
 
                 // Decide: add or remove liquidity
                 let should_add = rng.gen_bool(pool_config.add_ratio);
+                let position_key = format!("{}:{}", user.to_string(), pair_address.to_string());
 
-                if should_add || !lp_positions.contains_key(&(user.clone(), pair_address.clone())) {
+                if should_add || !lp_positions.contains_key(&position_key) {
                     // Add liquidity
                     let amount_0 = if pool_config.test_edge_cases && rng.gen_bool(0.1) {
                         // Test edge cases 10% of the time
@@ -218,11 +220,11 @@ impl StressScenario for PoolStressScenario {
                     let pair_client = PairClient::new(&env, pair_address);
                     let balance = pair_client.balance(&user);
                     if balance > 0 {
-                        lp_positions.insert((user.clone(), pair_address.clone()), balance);
+                        lp_positions.insert(position_key.clone(), balance);
                     }
                 } else {
                     // Remove liquidity
-                    if let Some(&shares) = lp_positions.get(&(user.clone(), pair_address.clone())) {
+                    if let Some(&shares) = lp_positions.get(&position_key) {
                         if shares > 0 {
                             // Remove random portion (10% - 100%)
                             let remove_ratio = rng.gen_range(10..=100);
@@ -240,9 +242,9 @@ impl StressScenario for PoolStressScenario {
                             let pair_client = PairClient::new(&env, pair_address);
                             let new_balance = pair_client.balance(&user);
                             if new_balance > 0 {
-                                lp_positions.insert((user.clone(), pair_address.clone()), new_balance);
+                                lp_positions.insert(position_key.clone(), new_balance);
                             } else {
-                                lp_positions.remove(&(user.clone(), pair_address.clone()));
+                                lp_positions.remove(&position_key);
                             }
                         }
                     }

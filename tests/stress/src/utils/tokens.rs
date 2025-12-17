@@ -2,15 +2,16 @@
 //!
 //! Utilities for setting up and managing test tokens for stress testing.
 
-use soroban_sdk::{Address, Env};
-use soroban_token_sdk::TokenClient;
+use soroban_sdk::{
+    token::{Client as TokenClient, StellarAssetClient},
+    Address, Env,
+};
 use std::collections::HashMap;
 
-/// Token information
+/// Token information (SDK 23: store address only, create clients on demand)
 #[derive(Clone, Debug)]
 pub struct TokenInfo {
     pub address: Address,
-    pub client: TokenClient<'static>,
     pub name: String,
     pub decimals: u32,
 }
@@ -19,6 +20,7 @@ pub struct TokenInfo {
 pub struct TokenManager {
     tokens: Vec<TokenInfo>,
     token_map: HashMap<String, usize>,
+    env: Option<Env>, // Store env for creating clients on demand
 }
 
 impl TokenManager {
@@ -27,6 +29,7 @@ impl TokenManager {
         Self {
             tokens: Vec::new(),
             token_map: HashMap::new(),
+            env: None,
         }
     }
 
@@ -39,16 +42,20 @@ impl TokenManager {
         decimals: u32,
         initial_supply: i128,
     ) -> &TokenInfo {
-        let token_address = env.register_stellar_asset_contract_v2(admin.clone()).address();
-        let token_client = TokenClient::new(env, &token_address);
+        // Store env reference for later use
+        if self.env.is_none() {
+            self.env = Some(env.clone());
+        }
 
-        // Mint initial supply to admin
-        token_client.mint(admin, &initial_supply);
+        let token_address = env.register_stellar_asset_contract_v2(admin.clone()).address();
+
+        // SDK 23: Use StellarAssetClient for mint operations
+        let admin_client = StellarAssetClient::new(env, &token_address);
+        admin_client.mint(admin, &initial_supply);
 
         let index = self.tokens.len();
         let token_info = TokenInfo {
             address: token_address,
-            client: token_client,
             name: name.clone(),
             decimals,
         };
@@ -107,9 +114,11 @@ impl TokenManager {
         to_accounts: &[Address],
         amount_per_account: i128,
     ) {
+        let env = self.env.as_ref().expect("TokenManager not initialized with env");
         for token in &self.tokens {
+            let client = TokenClient::new(env, &token.address);
             for account in to_accounts {
-                token.client.transfer(from, account, &amount_per_account);
+                client.transfer(from, account, &amount_per_account);
             }
         }
     }
@@ -122,18 +131,24 @@ impl TokenManager {
         to_accounts: &[Address],
         amount_per_account: i128,
     ) {
+        let env = self.env.as_ref().expect("TokenManager not initialized with env");
         if let Some(token) = self.tokens.get(token_index) {
+            let client = TokenClient::new(env, &token.address);
             for account in to_accounts {
-                token.client.transfer(from, account, &amount_per_account);
+                client.transfer(from, account, &amount_per_account);
             }
         }
     }
 
     /// Get balance of account for specific token
     pub fn balance(&self, token_index: usize, account: &Address) -> i128 {
+        let env = self.env.as_ref().expect("TokenManager not initialized with env");
         self.tokens
             .get(token_index)
-            .map(|token| token.client.balance(account))
+            .map(|token| {
+                let client = TokenClient::new(env, &token.address);
+                client.balance(account)
+            })
             .unwrap_or(0)
     }
 
@@ -185,7 +200,7 @@ mod tests {
     #[test]
     fn test_create_token() {
         let env = Env::default();
-        env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let mut manager = TokenManager::new();
 
@@ -199,13 +214,13 @@ mod tests {
 
         assert_eq!(token.name, "TEST");
         assert_eq!(token.decimals, 7);
-        assert_eq!(token.client.balance(&admin), 1_000_000_0000000);
+        assert_eq!(manager.balance(0, &admin), 1_000_000_0000000);
     }
 
     #[test]
     fn test_create_multiple_tokens() {
         let env = Env::default();
-        env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let mut manager = TokenManager::new();
 
@@ -220,7 +235,7 @@ mod tests {
     #[test]
     fn test_distribute_tokens() {
         let env = Env::default();
-        env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let user1 = Address::generate(&env);
         let user2 = Address::generate(&env);
@@ -238,7 +253,7 @@ mod tests {
     #[test]
     fn test_get_pairs() {
         let env = Env::default();
-        env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let mut manager = TokenManager::new();
 
