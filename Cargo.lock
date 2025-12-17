@@ -177,6 +177,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "astroswap-e2e-tests"
+version = "0.1.0"
+dependencies = [
+ "astroswap-bridge",
+ "astroswap-factory",
+ "astroswap-pair",
+ "astroswap-router",
+ "astroswap-shared",
+ "astroswap-staking",
+ "soroban-sdk",
+ "soroban-token-sdk",
+]
+
+[[package]]
 name = "astroswap-factory"
 version = "0.1.0"
 dependencies = [

@@ -21,7 +21,7 @@
 use soroban_sdk::{
     testutils::{Address as _, Ledger, LedgerInfo},
     token,
-    Address, Env, String,
+    Address, Env, String, Symbol, Vec, IntoVal,
 };
 
 // External contract crates
@@ -35,10 +35,33 @@ extern crate astroswap_staking;
 // Contract imports
 use astroswap_bridge::{AstroSwapBridge, AstroSwapBridgeClient};
 use astroswap_factory::{AstroSwapFactory, AstroSwapFactoryClient};
-use astroswap_pair::{AstroSwapPair, AstroSwapPairClient};
+use astroswap_pair::AstroSwapPair;
 use astroswap_router::{AstroSwapRouter, AstroSwapRouterClient};
-use astroswap_shared::TokenMetadata;
+use astroswap_shared::{TokenMetadata, PairClient};
 use astroswap_staking::{AstroSwapStaking, AstroSwapStakingClient};
+
+// WASM bytes for pair contract deployment
+mod pair_wasm {
+    pub const WASM: &[u8] = include_bytes!("../../../target/wasm32v1-none/release/astroswap_pair.wasm");
+}
+
+/// Helper to get token balance
+fn get_balance(env: &Env, contract: &Address, user: &Address) -> i128 {
+    env.invoke_contract(
+        contract,
+        &Symbol::new(env, "balance"),
+        Vec::from_array(env, [user.to_val()]),
+    )
+}
+
+/// Helper to get total supply
+fn get_total_supply(env: &Env, contract: &Address) -> i128 {
+    env.invoke_contract(
+        contract,
+        &Symbol::new(env, "total_supply"),
+        Vec::new(env),
+    )
+}
 
 /// Helper to create a token contract for testing
 fn create_token_contract<'a>(env: &Env, admin: &Address) -> token::Client<'a> {
@@ -90,12 +113,13 @@ impl<'a> TestContext<'a> {
     /// Create a new test context with all contracts deployed and initialized
     fn new() -> Self {
         let env = Env::default();
-        env.mock_all_auths();
+        // Use mock_all_auths_allowing_non_root_auth for contract-to-contract calls
+        env.mock_all_auths_allowing_non_root_auth();
 
-        // Set initial ledger state
+        // Set initial ledger state (protocol version 23 required for SDK 23)
         env.ledger().set(LedgerInfo {
             timestamp: 1700000000,
-            protocol_version: 22,
+            protocol_version: 23,
             sequence_number: 1000,
             network_id: [0; 32],
             base_reserve: 10,
@@ -114,7 +138,7 @@ impl<'a> TestContext<'a> {
         let factory = AstroSwapFactoryClient::new(&env, &factory_id);
 
         // Deploy pair WASM (needed by factory)
-        let pair_wasm_hash = env.deployer().upload_contract_wasm(AstroSwapPair);
+        let pair_wasm_hash = env.deployer().upload_contract_wasm(pair_wasm::WASM);
 
         // Initialize factory
         factory.initialize(&admin, &pair_wasm_hash, &30); // 30 bps = 0.3% protocol fee
@@ -304,7 +328,7 @@ fn test_complete_graduation_flow() {
         .factory
         .get_pair(&ctx.graduated_token, &ctx.quote_token)
         .unwrap();
-    let pair_client = AstroSwapPairClient::new(&ctx.env, &pair_address);
+    let pair_client = PairClient::new(&ctx.env, &pair_address);
 
     println!("✓ Pair created");
 
@@ -328,10 +352,10 @@ fn test_complete_graduation_flow() {
     );
 
     // Verify LP tokens were minted
-    let total_lp_supply = pair_client.total_supply();
+    let total_lp_supply = get_total_supply(&ctx.env, &pair_address);
     assert!(total_lp_supply > 0, "LP tokens should exist");
 
-    let bridge_lp_balance = pair_client.balance(&ctx.bridge_id);
+    let bridge_lp_balance = get_balance(&ctx.env, &pair_address, &ctx.bridge_id);
     println!("✓ LP tokens total: {}, bridge holds: {}", total_lp_supply, bridge_lp_balance);
 
     // Verify graduation was recorded
@@ -355,9 +379,9 @@ fn test_complete_graduation_flow() {
 
     println!("✓ Staking pool created with ID: {}", pool_id);
 
-    // Verify initial price calculation
+    // Verify initial price calculation (contract uses 10_000_000 precision)
     let initial_price = graduation_result.initial_price;
-    let expected_price = (quote_amount * 1_000_000) / token_amount;
+    let expected_price = (quote_amount * 10_000_000) / token_amount;
     assert_eq!(initial_price, expected_price);
     println!("✓ Initial price: {} (quote per token)", initial_price);
 

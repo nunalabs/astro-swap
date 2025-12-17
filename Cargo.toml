@@ -10,8 +10,8 @@ members = [
     "contracts/shared",
     "contracts/oracle",
     "contracts/tests",
-    # Temporarily excluded (needs SDK 23 migration):
-    # "tests/e2e",
+    "tests/e2e",
+    # Temporarily excluded:
     # "tests/stress",
 ]
 
