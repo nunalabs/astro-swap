@@ -228,11 +228,11 @@ impl AstroSwapStaking {
         // Calculate and transfer pending rewards
         let pending = Self::calculate_pending_rewards(&pool, &user_stake)?;
         if pending > 0 {
-            // Apply multiplier
+            // Apply multiplier (multiplier is u32, safely fits in i128)
             let multiplier = Self::get_current_multiplier(&env, &user_stake);
             let boosted_reward = safe_div(
-                safe_mul(pending, multiplier as i128)?,
-                BPS_DENOMINATOR as i128,
+                safe_mul(pending, i128::from(multiplier))?,
+                i128::from(BPS_DENOMINATOR),
             )?;
             Self::transfer_rewards(&env, &pool.reward_token, &user, boosted_reward)?;
             emit_claim(&env, &user, pool_id, boosted_reward);
@@ -308,11 +308,11 @@ impl AstroSwapStaking {
             return Err(AstroSwapError::NoRewardsAvailable);
         }
 
-        // Apply multiplier
+        // Apply multiplier (multiplier is u32, safely fits in i128)
         let multiplier = Self::get_current_multiplier(&env, &user_stake);
         let boosted_reward = safe_div(
-            safe_mul(pending, multiplier as i128)?,
-            BPS_DENOMINATOR as i128,
+            safe_mul(pending, i128::from(multiplier))?,
+            i128::from(BPS_DENOMINATOR),
         )?;
 
         // Transfer rewards
@@ -429,11 +429,11 @@ impl AstroSwapStaking {
 
         let pending = Self::calculate_pending_rewards(&simulated_pool, &user_stake)?;
 
-        // Apply multiplier
+        // Apply multiplier (multiplier is u32, safely fits in i128)
         let multiplier = Self::get_current_multiplier(&env, &user_stake);
         safe_div(
-            safe_mul(pending, multiplier as i128)?,
-            BPS_DENOMINATOR as i128,
+            safe_mul(pending, i128::from(multiplier))?,
+            i128::from(BPS_DENOMINATOR),
         )
     }
 
@@ -533,8 +533,8 @@ impl AstroSwapStaking {
 
         let time_elapsed = effective_time - pool.last_update_time;
 
-        // Calculate rewards
-        let reward = safe_mul(pool.reward_per_second, time_elapsed as i128)?;
+        // Calculate rewards (time_elapsed is u64, safely fits in i128)
+        let reward = safe_mul(pool.reward_per_second, i128::from(time_elapsed))?;
         let reward_per_share_increase =
             safe_div(safe_mul(reward, REWARD_PRECISION)?, pool.total_staked)?;
 

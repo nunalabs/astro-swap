@@ -39,7 +39,7 @@ pub fn add_observation(env: &Env, token: &Address, price: i128) -> Result<(), Or
             .cumulative_price
             .checked_add(
                 price
-                    .checked_mul(time_elapsed as i128)
+                    .checked_mul(i128::from(time_elapsed))
                     .ok_or(OracleError::Overflow)?
             )
             .ok_or(OracleError::Overflow)?
@@ -114,7 +114,7 @@ pub fn calculate_twap(env: &Env, token: &Address, window: u64) -> Result<i128, O
     }
 
     let twap = cumulative_diff
-        .checked_div(time_elapsed as i128)
+        .checked_div(i128::from(time_elapsed))
         .ok_or(OracleError::DivisionByZero)?;
 
     Ok(twap)

@@ -269,8 +269,12 @@ pub fn calculate_price_impact(
     }
 
     let diff = safe_sub(expected_out, actual_out)?;
-    let impact = mul_div_down(diff, BPS_DENOMINATOR as i128, expected_out)?;
+    let impact = mul_div_down(diff, i128::from(BPS_DENOMINATOR), expected_out)?;
 
+    // Validate impact fits in u32 (should always be <= 10000 bps but safeguard against bugs)
+    if impact > i128::from(u32::MAX) {
+        return Err(AstroSwapError::Overflow);
+    }
     Ok(impact as u32)
 }
 

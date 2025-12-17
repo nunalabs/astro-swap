@@ -651,7 +651,7 @@ impl AstroSwapAggregator {
 
         // Deduct aggregator fee upfront
         if config.aggregator_fee_bps > 0 {
-            let fee = (current_amount * config.aggregator_fee_bps as i128) / BPS as i128;
+            let fee = (current_amount * i128::from(config.aggregator_fee_bps)) / i128::from(BPS);
             if fee > 0 {
                 let first_step = route.steps.get(0).unwrap();
                 let token_client = token::Client::new(env, &first_step.token_in);
@@ -688,9 +688,9 @@ impl AstroSwapAggregator {
             let per_hop_slippage_bps: i128 = 100; // 1% per hop
             let min_hop_out = step
                 .expected_out
-                .checked_mul(BPS as i128 - per_hop_slippage_bps)
+                .checked_mul(i128::from(BPS) - per_hop_slippage_bps)
                 .unwrap_or(0)
-                / BPS as i128;
+                / i128::from(BPS);
 
             // Execute swap based on protocol with per-hop slippage protection
             current_amount = Self::execute_protocol_swap(
