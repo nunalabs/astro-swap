@@ -34,10 +34,10 @@ export interface AstroSwapClientConfig {
  * const client = new AstroSwapClient({
  *   network: 'testnet',
  *   contracts: {
- *     factory: 'CXXX...',
- *     router: 'CXXX...',
+ *     factory: 'CDKZ4GWKTYA5SAW3MWEOSFCFXVPKATWXVZE2YKC3ADRN2O37Y5QTCAB3',
+ *     router: 'CDRMQNYL56H6T2Y7K42RETRYAES5NWY3LXPH32BAHNQYSOA5ON66MLHN',
  *   },
- *   secretKey: 'SXXX...',
+ *   secretKey: 'SXXX...',  // Your secret key
  * });
  *
  * // Get swap quote

@@ -23,7 +23,7 @@ import { AstroSwapRouter, NETWORKS } from '@astroswap/sdk';
 
 // Create router instance
 const router = new AstroSwapRouter({
-  factoryAddress: 'CXXXFACTORY...',
+  factoryAddress: 'CDKZ4GWKTYA5SAW3MWEOSFCFXVPKATWXVZE2YKC3ADRN2O37Y5QTCAB3',
   network: NETWORKS.testnet,
   maxHops: 3,
   maxSplits: 3,

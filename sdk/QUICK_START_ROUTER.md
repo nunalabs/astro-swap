@@ -17,7 +17,7 @@ import { AstroSwapRouter, NETWORKS } from '@astroswap/sdk';
 
 // Create router instance
 const router = new AstroSwapRouter({
-  factoryAddress: 'YOUR_FACTORY_ADDRESS',
+  factoryAddress: 'CDKZ4GWKTYA5SAW3MWEOSFCFXVPKATWXVZE2YKC3ADRN2O37Y5QTCAB3',
   network: NETWORKS.testnet,
 });
 ```
