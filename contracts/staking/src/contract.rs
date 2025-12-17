@@ -87,7 +87,7 @@ impl AstroSwapStaking {
     /// Internal function to acquire reentrancy lock
     fn acquire_lock(env: &Env) -> Result<(), AstroSwapError> {
         if is_locked(env) {
-            return Err(AstroSwapError::InvalidArgument); // Reentrancy detected
+            return Err(AstroSwapError::Reentrancy);
         }
         set_locked(env, true);
         Ok(())

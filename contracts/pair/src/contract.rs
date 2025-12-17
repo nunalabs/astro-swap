@@ -72,8 +72,17 @@ impl AstroSwapPair {
         Ok(())
     }
 
+    /// Verify contract is initialized (prevents storage panics)
+    fn require_initialized(env: &Env) -> Result<(), AstroSwapError> {
+        if !is_initialized(env) {
+            return Err(AstroSwapError::NotInitialized);
+        }
+        Ok(())
+    }
+
     /// Verify caller is factory (for admin functions)
     fn require_factory(env: &Env) -> Result<(), AstroSwapError> {
+        Self::require_initialized(env)?;
         let factory = get_factory(env);
         factory.require_auth();
         Ok(())
@@ -117,7 +126,9 @@ impl AstroSwapPair {
         amount_0_min: i128,
         amount_1_min: i128,
     ) -> Result<(i128, i128, i128), AstroSwapError> {
-        // Check pause status first
+        // Verify contract is initialized
+        Self::require_initialized(&env)?;
+        // Check pause status
         Self::require_not_paused(&env)?;
 
         // Reentrancy guard
@@ -230,7 +241,9 @@ impl AstroSwapPair {
         amount_0_min: i128,
         amount_1_min: i128,
     ) -> Result<(i128, i128), AstroSwapError> {
-        // Check pause status first
+        // Verify contract is initialized
+        Self::require_initialized(&env)?;
+        // Check pause status
         Self::require_not_paused(&env)?;
 
         // Reentrancy guard
@@ -323,7 +336,9 @@ impl AstroSwapPair {
         min_out: i128,
         deadline: u64,
     ) -> Result<i128, AstroSwapError> {
-        // Check pause status first
+        // Verify contract is initialized
+        Self::require_initialized(&env)?;
+        // Check pause status
         Self::require_not_paused(&env)?;
 
         // Check deadline (MEV protection)
@@ -437,7 +452,9 @@ impl AstroSwapPair {
         min_out: i128,
         deadline: u64,
     ) -> Result<(i128, i128), AstroSwapError> {
-        // Check pause status first
+        // Verify contract is initialized
+        Self::require_initialized(&env)?;
+        // Check pause status
         Self::require_not_paused(&env)?;
 
         // Check deadline (MEV protection)

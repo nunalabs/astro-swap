@@ -33,6 +33,14 @@ impl AstroSwapRouter {
     // Maximum path length to prevent excessive gas consumption
     const MAX_PATH_LENGTH: u32 = 5;
 
+    /// Verify contract is initialized (prevents storage panics)
+    fn require_initialized(env: &Env) -> Result<(), AstroSwapError> {
+        if !is_initialized(env) {
+            return Err(AstroSwapError::NotInitialized);
+        }
+        Ok(())
+    }
+
     /// Swap exact tokens for tokens
     /// Swaps a fixed amount of input tokens for as many output tokens as possible
     ///
@@ -53,6 +61,9 @@ impl AstroSwapRouter {
         path: Vec<Address>,
         deadline: u64,
     ) -> Result<Vec<i128>, AstroSwapError> {
+        // Verify contract is initialized
+        Self::require_initialized(&env)?;
+
         user.require_auth();
 
         // Check deadline
@@ -111,6 +122,9 @@ impl AstroSwapRouter {
         path: Vec<Address>,
         deadline: u64,
     ) -> Result<Vec<i128>, AstroSwapError> {
+        // Verify contract is initialized
+        Self::require_initialized(&env)?;
+
         user.require_auth();
 
         // Check deadline
@@ -175,6 +189,9 @@ impl AstroSwapRouter {
         amount_b_min: i128,
         deadline: u64,
     ) -> Result<(i128, i128, i128), AstroSwapError> {
+        // Verify contract is initialized
+        Self::require_initialized(&env)?;
+
         user.require_auth();
 
         // Check deadline
@@ -244,6 +261,9 @@ impl AstroSwapRouter {
         amount_b_min: i128,
         deadline: u64,
     ) -> Result<(i128, i128), AstroSwapError> {
+        // Verify contract is initialized
+        Self::require_initialized(&env)?;
+
         user.require_auth();
 
         // Check deadline
