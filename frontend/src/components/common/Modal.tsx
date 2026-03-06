@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useRef, useCallback } from 'react';
+import { ReactNode, useEffect, useRef, useCallback, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../../lib/utils';
 
@@ -23,6 +23,17 @@ export function Modal({
 }: ModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
   const previousActiveElement = useRef<HTMLElement | null>(null);
+  const [hasInitialFocus, setHasInitialFocus] = useState(false);
+
+  // Use ref for onClose to avoid recreating event handlers on every render
+  // This is the KEY fix - it prevents parent re-renders from causing focus issues
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // Stable close handler that uses the ref
+  const handleClose = useCallback(() => {
+    onCloseRef.current();
+  }, []);
 
   // Get all focusable elements within the modal
   const getFocusableElements = useCallback(() => {
@@ -34,11 +45,20 @@ export function Modal({
     ).filter((el) => !el.hasAttribute('disabled') && el.offsetParent !== null);
   }, []);
 
-  // Focus trap handler
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
+  // Reset initial focus state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setHasInitialFocus(false);
+    }
+  }, [isOpen]);
+
+  // Keyboard event handling (Escape and Tab)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose();
+        handleClose();
         return;
       }
 
@@ -63,38 +83,44 @@ export function Modal({
           firstElement.focus();
         }
       }
-    },
-    [onClose, getFocusableElements]
-  );
+    };
 
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, handleClose, getFocusableElements]);
+
+  // Body scroll lock and initial focus
   useEffect(() => {
-    if (isOpen) {
-      // Store currently focused element
-      previousActiveElement.current = document.activeElement as HTMLElement;
+    if (!isOpen) return;
 
-      // Add event listener
-      document.addEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'hidden';
+    // Store currently focused element
+    previousActiveElement.current = document.activeElement as HTMLElement;
+    document.body.style.overflow = 'hidden';
 
-      // Focus first focusable element after animation
-      const timer = setTimeout(() => {
-        const focusableElements = getFocusableElements();
-        if (focusableElements.length > 0) {
-          focusableElements[0].focus();
+    // Focus first INPUT element (not button) only once when modal opens
+    // This prevents focus from jumping while user is typing
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (!hasInitialFocus) {
+      timer = setTimeout(() => {
+        const focusableInputs = modalRef.current?.querySelectorAll<HTMLElement>(
+          'input, select, textarea'
+        );
+        if (focusableInputs && focusableInputs.length > 0) {
+          focusableInputs[0].focus();
         } else {
           modalRef.current?.focus();
         }
+        setHasInitialFocus(true);
       }, 100);
-
-      return () => {
-        clearTimeout(timer);
-        document.removeEventListener('keydown', handleKeyDown);
-        document.body.style.overflow = 'unset';
-        // Restore focus to previously focused element
-        previousActiveElement.current?.focus();
-      };
     }
-  }, [isOpen, handleKeyDown, getFocusableElements]);
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      document.body.style.overflow = 'unset';
+      // Restore focus to previously focused element
+      previousActiveElement.current?.focus();
+    };
+  }, [isOpen, hasInitialFocus]);
 
   const sizes = {
     sm: 'max-w-md',
@@ -112,7 +138,7 @@ export function Modal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={onClose}
+            onClick={handleClose}
             className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50"
           />
 
@@ -140,7 +166,7 @@ export function Modal({
                   {title && <h2 id="modal-title" className="text-xl font-semibold text-white">{title}</h2>}
                   {showClose && (
                     <button
-                      onClick={onClose}
+                      onClick={handleClose}
                       className="text-neutral-400 hover:text-white transition-colors p-1"
                       aria-label="Close modal"
                     >

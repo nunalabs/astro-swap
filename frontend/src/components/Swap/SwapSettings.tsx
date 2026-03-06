@@ -1,3 +1,4 @@
+import { useCallback, memo } from 'react';
 import { useSettingsStore } from '../../stores/settingsStore';
 
 // Simple slippage options - just two choices
@@ -6,13 +7,14 @@ const SLIPPAGE_OPTIONS = [
   { value: 1.0, label: '1%', description: 'Volatile pairs' },
 ] as const;
 
-export function SwapSettings() {
+export const SwapSettings = memo(function SwapSettings() {
   const slippageTolerance = useSettingsStore((state) => state.slippageTolerance);
   const updateSettings = useSettingsStore((state) => state.updateSettings);
 
-  const handleSlippageChange = (value: number) => {
+  // Stable callback for slippage changes
+  const handleSlippageChange = useCallback((value: number) => {
     updateSettings({ slippageTolerance: value });
-  };
+  }, [updateSettings]);
 
   return (
     <div className="flex items-center gap-1">
@@ -36,4 +38,4 @@ export function SwapSettings() {
       </div>
     </div>
   );
-}
+});

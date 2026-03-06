@@ -166,6 +166,10 @@ export const TokenSelector = memo(function TokenSelector({ selectedToken, onSele
     setShowAddToken(true);
   }, []);
 
+  // Stable callbacks for Modal onClose (prevents re-renders)
+  const closeTokenModal = useCallback(() => setIsOpen(false), []);
+  const closeAddTokenModal = useCallback(() => setShowAddToken(false), []);
+
   // Get display info for selected token
   const selectedTokenDisplay = useMemo(
     () => selectedToken ? getTokenDisplayInfo(selectedToken) : null,
@@ -207,7 +211,7 @@ export const TokenSelector = memo(function TokenSelector({ selectedToken, onSele
         </svg>
       </button>
 
-      <Modal isOpen={isOpen} onClose={() => setIsOpen(false)} title="Select a Token" size="md">
+      <Modal isOpen={isOpen} onClose={closeTokenModal} title="Select a Token" size="md">
         <div className="space-y-4">
           {/* Search and Refresh */}
           <div className="flex gap-2">
@@ -336,7 +340,7 @@ export const TokenSelector = memo(function TokenSelector({ selectedToken, onSele
       {/* Add Token Modal */}
       <AddTokenModal
         isOpen={showAddToken}
-        onClose={() => setShowAddToken(false)}
+        onClose={closeAddTokenModal}
       />
     </>
   );

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, memo } from 'react';
 import { motion } from 'framer-motion';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
@@ -19,7 +19,10 @@ import { formatPercent, parseTokenAmount } from '../../lib/utils';
 const DEFAULT_TOKEN_IN = BASE_TOKENS[0]; // XLM
 const DEFAULT_TOKEN_OUT = BASE_TOKENS[1]; // USDC
 
-export function SwapCard() {
+// Stable no-op callback for read-only inputs
+const NOOP = () => {};
+
+export const SwapCard = memo(function SwapCard() {
   const [tokenIn, setTokenIn] = useState<Token | null>(DEFAULT_TOKEN_IN);
   const [tokenOut, setTokenOut] = useState<Token | null>(DEFAULT_TOKEN_OUT);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -126,7 +129,7 @@ export function SwapCard() {
           token={tokenOut}
           amount={amountOut}
           onTokenSelect={setTokenOut}
-          onAmountChange={() => {}} // Read-only
+          onAmountChange={NOOP} // Read-only
           excludeTokens={tokenIn ? [tokenIn.address] : []}
           readOnly
           showBalance={false}
@@ -293,4 +296,4 @@ export function SwapCard() {
       )}
     </Card>
   );
-}
+});

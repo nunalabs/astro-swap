@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback, memo } from 'react';
 import { motion } from 'framer-motion';
 import { useWalletStore } from '../../stores/walletStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -6,7 +6,7 @@ import { shortenAddress, formatNumber } from '../../lib/utils';
 import { Button } from './Button';
 import { Modal } from './Modal';
 
-export function ConnectWallet() {
+export const ConnectWallet = memo(function ConnectWallet() {
   // PERFORMANCE: Use granular selectors to avoid unnecessary re-renders
   const isConnected = useWalletStore((state) => state.isConnected);
   const address = useWalletStore((state) => state.address);
@@ -58,6 +58,9 @@ export function ConnectWallet() {
       description: 'Address copied to clipboard',
     });
   };
+
+  // Stable callback for modal close (prevents re-renders)
+  const closeAccountModal = useCallback(() => setShowAccountModal(false), []);
 
   if (!isConnected) {
     return (
@@ -123,7 +126,7 @@ export function ConnectWallet() {
       {/* Account Modal */}
       <Modal
         isOpen={showAccountModal}
-        onClose={() => setShowAccountModal(false)}
+        onClose={closeAccountModal}
         title="Account"
         size="sm"
       >
@@ -202,4 +205,4 @@ export function ConnectWallet() {
       </Modal>
     </>
   );
-}
+});

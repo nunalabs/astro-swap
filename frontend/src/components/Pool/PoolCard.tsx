@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import type { Pool } from '../../types';
@@ -9,7 +10,7 @@ interface PoolCardProps {
   onRemoveLiquidity?: () => void;
 }
 
-export function PoolCard({ pool, onAddLiquidity, onRemoveLiquidity }: PoolCardProps) {
+export const PoolCard = memo(function PoolCard({ pool, onAddLiquidity, onRemoveLiquidity }: PoolCardProps) {
   return (
     <Card hover className="p-6">
       <div className="flex items-center justify-between mb-4">
@@ -68,4 +69,4 @@ export function PoolCard({ pool, onAddLiquidity, onRemoveLiquidity }: PoolCardPr
       </div>
     </Card>
   );
-}
+});

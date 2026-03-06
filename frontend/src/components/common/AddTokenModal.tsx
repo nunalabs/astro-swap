@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback, memo } from 'react';
 import { Modal } from './Modal';
 import { Button } from './Button';
 import { useTokenStore } from '../../stores/tokenStore';
@@ -13,7 +13,7 @@ interface AddTokenModalProps {
   onClose: () => void;
 }
 
-export function AddTokenModal({ isOpen, onClose }: AddTokenModalProps) {
+export const AddTokenModal = memo(function AddTokenModal({ isOpen, onClose }: AddTokenModalProps) {
   const [address, setAddress] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [tokenInfo, setTokenInfo] = useState<Partial<Token> | null>(null);
@@ -134,12 +134,13 @@ export function AddTokenModal({ isOpen, onClose }: AddTokenModalProps) {
     }
   };
 
-  const handleClose = () => {
+  // Stable close handler
+  const handleClose = useCallback(() => {
     setAddress('');
     setTokenInfo(null);
     setError('');
     onClose();
-  };
+  }, [onClose]);
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Import Token" size="md">
@@ -208,4 +209,4 @@ export function AddTokenModal({ isOpen, onClose }: AddTokenModalProps) {
       </div>
     </Modal>
   );
-}
+});

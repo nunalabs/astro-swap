@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { PoolCard } from '../components/Pool/PoolCard';
 import { Button } from '../components/common/Button';
@@ -25,16 +25,20 @@ export function Pool() {
 
   const { pools, isLoading, addLiquidity, removeLiquidity, isAddingLiquidity, isRemovingLiquidity } = usePool();
 
-  const handleAddLiquidity = () => {
+  // Stable callbacks to prevent Modal re-renders
+  const closeAddModal = useCallback(() => setShowAddModal(false), []);
+  const closeRemoveModal = useCallback(() => setShowRemoveModal(false), []);
+
+  const handleAddLiquidity = useCallback(() => {
     if (tokenA && tokenB && amountA && amountB) {
       addLiquidity({ tokenA, tokenB, amountA, amountB, slippage: slippageTolerance });
       setShowAddModal(false);
       setAmountA('');
       setAmountB('');
     }
-  };
+  }, [tokenA, tokenB, amountA, amountB, addLiquidity, slippageTolerance]);
 
-  const handleRemoveLiquidity = () => {
+  const handleRemoveLiquidity = useCallback(() => {
     if (selectedPool && removeAmount) {
       removeLiquidity({
         tokenA: selectedPool.token0,
@@ -44,7 +48,7 @@ export function Pool() {
       setShowRemoveModal(false);
       setRemoveAmount('');
     }
-  };
+  }, [selectedPool, removeAmount, removeLiquidity]);
 
   return (
     <motion.div
@@ -105,7 +109,7 @@ export function Pool() {
       )}
 
       {/* Add Liquidity Modal */}
-      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Add Liquidity" size="md">
+      <Modal isOpen={showAddModal} onClose={closeAddModal} title="Add Liquidity" size="md">
         <div className="space-y-4">
           <TokenInput
             label="Token A"
@@ -137,7 +141,7 @@ export function Pool() {
       </Modal>
 
       {/* Remove Liquidity Modal */}
-      <Modal isOpen={showRemoveModal} onClose={() => setShowRemoveModal(false)} title="Remove Liquidity" size="md">
+      <Modal isOpen={showRemoveModal} onClose={closeRemoveModal} title="Remove Liquidity" size="md">
         <div className="space-y-4">
           <div>
             <label className="text-sm text-neutral-400 mb-2 block">Amount</label>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback, memo } from 'react';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { Modal } from '../common/Modal';
@@ -10,7 +10,7 @@ interface StakingCardProps {
   pool: StakingPool;
 }
 
-export function StakingCard({ pool }: StakingCardProps) {
+export const StakingCard = memo(function StakingCard({ pool }: StakingCardProps) {
   const [showStakeModal, setShowStakeModal] = useState(false);
   const [showUnstakeModal, setShowUnstakeModal] = useState(false);
   const [stakeAmount, setStakeAmount] = useState('');
@@ -18,17 +18,21 @@ export function StakingCard({ pool }: StakingCardProps) {
 
   const { stakeInfo, stake, unstake, claimRewards, isStaking, isUnstaking, isClaiming } = useStaking(pool.address);
 
-  const handleStake = () => {
+  // Stable callbacks to prevent Modal re-renders
+  const closeStakeModal = useCallback(() => setShowStakeModal(false), []);
+  const closeUnstakeModal = useCallback(() => setShowUnstakeModal(false), []);
+
+  const handleStake = useCallback(() => {
     stake({ amount: stakeAmount });
     setStakeAmount('');
     setShowStakeModal(false);
-  };
+  }, [stake, stakeAmount]);
 
-  const handleUnstake = () => {
+  const handleUnstake = useCallback(() => {
     unstake({ amount: unstakeAmount });
     setUnstakeAmount('');
     setShowUnstakeModal(false);
-  };
+  }, [unstake, unstakeAmount]);
 
   return (
     <>
@@ -83,7 +87,7 @@ export function StakingCard({ pool }: StakingCardProps) {
       </Card>
 
       {/* Stake Modal */}
-      <Modal isOpen={showStakeModal} onClose={() => setShowStakeModal(false)} title="Stake LP Tokens">
+      <Modal isOpen={showStakeModal} onClose={closeStakeModal} title="Stake LP Tokens">
         <div className="space-y-4">
           <input
             type="number"
@@ -99,7 +103,7 @@ export function StakingCard({ pool }: StakingCardProps) {
       </Modal>
 
       {/* Unstake Modal */}
-      <Modal isOpen={showUnstakeModal} onClose={() => setShowUnstakeModal(false)} title="Unstake LP Tokens">
+      <Modal isOpen={showUnstakeModal} onClose={closeUnstakeModal} title="Unstake LP Tokens">
         <div className="space-y-4">
           <input
             type="number"
@@ -115,4 +119,4 @@ export function StakingCard({ pool }: StakingCardProps) {
       </Modal>
     </>
   );
-}
+});
