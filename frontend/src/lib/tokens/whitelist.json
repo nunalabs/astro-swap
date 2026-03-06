@@ -1,5 +1,5 @@
 {
-  "version": "1.0.1",
+  "version": "1.0.2",
   "updated": "2026-03-06",
   "tokens": [
     {
@@ -12,6 +12,19 @@
       "icon": "https://stellar.expert/img/vendor/xlm.svg",
       "verified": true,
       "popular": true
+    },
+    {
+      "code": "ASTRO",
+      "issuer": "GDH3DLJAJXYN56MGVA5YA6MKWRXHSWHPOWPBHWCUBFZC2XOY7BXGJ5HY",
+      "contractId": "CCHNAJAEDXSLXO4MBMSEX4ERTPDU2RC3JEQ25GGSXMGIIWMFZ3KWU2AS",
+      "name": "Astro Token",
+      "symbol": "ASTRO",
+      "decimals": 7,
+      "icon": "/astro-icon.svg",
+      "domain": "astro.network",
+      "verified": true,
+      "popular": true,
+      "testnet": true
     },
     {
       "code": "USDC",
