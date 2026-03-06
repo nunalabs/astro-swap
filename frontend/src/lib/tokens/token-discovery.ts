@@ -103,10 +103,13 @@ export async function fetchStellarExpertTokens(options: {
       // Skip unrated or very low-rated tokens
       if (asset.rating && asset.rating.average < 1) continue;
 
+      // Get clean asset code (not the full address)
+      const assetCode = asset.asset || '';
+
       const token: Token = {
-        address: createSACAddress(asset.asset, asset.issuer),
-        symbol: asset.asset,
-        name: asset.name || asset.asset,
+        address: createSACAddress(assetCode, asset.issuer),
+        symbol: assetCode,  // Just the code, e.g., "USDC"
+        name: asset.toml_info?.name || asset.name || assetCode,
         decimals: 7, // Stellar default
         logoURI: asset.toml_info?.image,
         issuer: asset.issuer,
@@ -235,9 +238,55 @@ function extractTomlValue(text: string, key: string): string | undefined {
  */
 function createSACAddress(assetCode: string, issuer: string): string {
   if (issuer === 'native') return 'native';
-  // For now, return a composite identifier
-  // TODO: Compute actual SAC address using stellar-sdk
+  // Return composite identifier CODE:ISSUER
   return `${assetCode}:${issuer}`;
+}
+
+/**
+ * Truncate issuer address for display
+ */
+export function truncateIssuer(issuer: string, chars: number = 4): string {
+  if (!issuer || issuer === 'native') return '';
+  if (issuer.length <= chars * 2 + 3) return issuer;
+  return `${issuer.slice(0, chars)}...${issuer.slice(-chars)}`;
+}
+
+/**
+ * Get display-friendly token info
+ */
+export function getTokenDisplayInfo(token: Token): {
+  symbol: string;
+  name: string;
+  issuerShort: string;
+  logoURI?: string;
+} {
+  // For whitelist tokens, use their defined symbol/name
+  if (token.source === 'whitelist') {
+    return {
+      symbol: token.symbol,
+      name: token.name,
+      issuerShort: token.domain || truncateIssuer(token.issuer || ''),
+      logoURI: token.logoURI,
+    };
+  }
+
+  // For other tokens, extract code from address if needed
+  let symbol = token.symbol;
+  let issuer = token.issuer || '';
+
+  // If symbol contains ':', it's in CODE:ISSUER format
+  if (symbol.includes(':')) {
+    const parts = symbol.split(':');
+    symbol = parts[0];
+    issuer = parts[1] || issuer;
+  }
+
+  return {
+    symbol,
+    name: token.name !== symbol ? token.name : symbol,
+    issuerShort: token.domain || truncateIssuer(issuer),
+    logoURI: token.logoURI,
+  };
 }
 
 /**

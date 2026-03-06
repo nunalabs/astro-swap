@@ -4,6 +4,7 @@ import { Modal } from './Modal';
 import { AddTokenModal } from './AddTokenModal';
 import { useTokenStore } from '../../stores/tokenStore';
 import { useWalletStore } from '../../stores/walletStore';
+import { getTokenDisplayInfo } from '../../lib/tokens';
 import type { Token } from '../../types';
 import { cn } from '../../lib/utils';
 
@@ -165,25 +166,38 @@ export const TokenSelector = memo(function TokenSelector({ selectedToken, onSele
     setShowAddToken(true);
   }, []);
 
+  // Get display info for selected token
+  const selectedTokenDisplay = useMemo(
+    () => selectedToken ? getTokenDisplayInfo(selectedToken) : null,
+    [selectedToken]
+  );
+
   return (
     <>
       <button
         onClick={() => setIsOpen(true)}
-        aria-label={selectedToken ? `Selected token: ${selectedToken.symbol}. Click to change` : 'Select a token'}
+        aria-label={selectedTokenDisplay ? `Selected token: ${selectedTokenDisplay.symbol}. Click to change` : 'Select a token'}
         aria-haspopup="dialog"
         className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors min-h-[44px]"
       >
-        {selectedToken ? (
+        {selectedTokenDisplay ? (
           <>
-            {selectedToken.logoURI && (
+            {selectedTokenDisplay.logoURI ? (
               <img
-                src={selectedToken.logoURI}
+                src={selectedTokenDisplay.logoURI}
                 alt=""
-                className="w-6 h-6 rounded-full"
+                className="w-6 h-6 rounded-full object-cover"
                 loading="lazy"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
               />
+            ) : (
+              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary/30 to-blue/30 flex items-center justify-center">
+                <span className="text-[10px] font-bold">{selectedTokenDisplay.symbol.slice(0, 2).toUpperCase()}</span>
+              </div>
             )}
-            <span className="font-semibold">{selectedToken.symbol}</span>
+            <span className="font-semibold">{selectedTokenDisplay.symbol}</span>
           </>
         ) : (
           <span className="text-neutral-400">Select token</span>
@@ -345,6 +359,9 @@ const TokenItem = memo(function TokenItem({ token, isFavorite, onSelect, onToggl
     onToggleFavorite(token.address);
   }, [onToggleFavorite, token.address]);
 
+  // Get clean display info for the token
+  const displayInfo = useMemo(() => getTokenDisplayInfo(token), [token]);
+
   return (
     <div className="flex items-center gap-2">
       {/* Main token selection button - semantic and accessible */}
@@ -352,59 +369,71 @@ const TokenItem = memo(function TokenItem({ token, isFavorite, onSelect, onToggl
         whileHover={{ scale: 1.01 }}
         whileTap={{ scale: 0.99 }}
         onClick={handleClick}
-        aria-label={`Select ${token.symbol} (${token.name})`}
+        aria-label={`Select ${displayInfo.symbol} (${displayInfo.name})`}
         className={cn(
           'flex items-center gap-3 flex-1 p-3 rounded-xl transition-colors text-left',
           'hover:bg-neutral-800 focus-visible:ring-2 focus-visible:ring-primary'
         )}
       >
-        {token.logoURI ? (
+        {displayInfo.logoURI ? (
           <img
-            src={token.logoURI}
+            src={displayInfo.logoURI}
             alt=""
-            className="w-8 h-8 rounded-full"
+            className="w-8 h-8 rounded-full object-cover flex-shrink-0"
             loading="lazy"
+            onError={(e) => {
+              // Hide broken images and show fallback
+              e.currentTarget.style.display = 'none';
+              e.currentTarget.nextElementSibling?.classList.remove('hidden');
+            }}
           />
-        ) : (
-          <div className="w-8 h-8 rounded-full bg-neutral-700 flex items-center justify-center" aria-hidden="true">
-            <span className="text-xs font-semibold">{token.symbol.slice(0, 2)}</span>
-          </div>
-        )}
+        ) : null}
+        <div
+          className={cn(
+            "w-8 h-8 rounded-full bg-gradient-to-br from-primary/30 to-blue/30 flex items-center justify-center flex-shrink-0",
+            displayInfo.logoURI ? "hidden" : ""
+          )}
+          aria-hidden="true"
+        >
+          <span className="text-xs font-bold text-white">{displayInfo.symbol.slice(0, 2).toUpperCase()}</span>
+        </div>
 
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold">{token.symbol}</span>
+        <div className="flex-1 min-w-0 overflow-hidden">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-semibold text-white truncate max-w-[120px]">{displayInfo.symbol}</span>
             {token.verified && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-green-500/20 text-green-400" title="Verified token">
-                <svg className="w-3 h-3 mr-0.5" fill="currentColor" viewBox="0 0 20 20">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-green-500/20 text-green-400 flex-shrink-0" title="Verified token">
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                 </svg>
               </span>
             )}
             {token.popular && !token.verified && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-primary/20 text-primary" title="Popular token">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-primary/20 text-primary flex-shrink-0" title="Popular token">
                 Popular
               </span>
             )}
             {token.rating && token.rating >= 4 && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-yellow-500/20 text-yellow-400" title={`Rating: ${token.rating.toFixed(1)}`}>
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-yellow-500/20 text-yellow-400 flex-shrink-0" title={`Rating: ${token.rating.toFixed(1)}`}>
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                 </svg>
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-neutral-400 truncate">{token.name}</span>
-            {token.domain && (
-              <span className="text-xs text-neutral-500 truncate">{token.domain}</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm text-neutral-400 truncate max-w-[140px]">{displayInfo.name}</span>
+            {displayInfo.issuerShort && (
+              <span className="text-xs text-neutral-500 truncate max-w-[80px] flex-shrink-0">
+                {displayInfo.issuerShort}
+              </span>
             )}
           </div>
         </div>
 
         {token.balance && (
-          <div className="text-right flex-shrink-0">
-            <div className="font-mono text-sm">{token.balance}</div>
+          <div className="text-right flex-shrink-0 ml-2">
+            <div className="font-mono text-sm text-white">{token.balance}</div>
           </div>
         )}
       </motion.button>

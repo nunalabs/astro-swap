@@ -17,6 +17,8 @@ export {
   getTokenByAddress,
   isValidTokenAddress,
   clearTokenDiscoveryCache,
+  truncateIssuer,
+  getTokenDisplayInfo,
 } from './token-discovery';
 
 // Re-export whitelist data for direct access
