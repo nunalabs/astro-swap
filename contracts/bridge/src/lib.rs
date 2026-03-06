@@ -50,9 +50,38 @@ pub struct AstroSwapBridge;
 
 #[contractimpl]
 impl AstroSwapBridge {
-    // ==================== Initialization ====================
+    // ==================== Constructor (CAP-58) ====================
 
-    /// Initialize the bridge contract
+    /// Constructor - runs atomically with contract deployment
+    /// Prevents front-running attacks during initialization
+    ///
+    /// # Arguments
+    /// * `admin` - Admin address for emergency functions
+    /// * `factory` - AstroSwap factory contract address
+    /// * `staking` - AstroSwap staking contract address
+    /// * `launchpad` - Astro-Shiba launchpad contract address
+    /// * `quote_token` - Quote token for pairs (XLM wrapper or USDC)
+    pub fn __constructor(
+        env: Env,
+        admin: Address,
+        factory: Address,
+        staking: Address,
+        launchpad: Address,
+        quote_token: Address,
+    ) {
+        set_admin(&env, &admin);
+        set_factory(&env, &factory);
+        set_staking(&env, &staking);
+        set_launchpad(&env, &launchpad);
+        set_quote_token(&env, &quote_token);
+        set_initialized(&env);
+
+        extend_instance_ttl(&env);
+    }
+
+    // ==================== Legacy Initialization ====================
+
+    /// Initialize the bridge contract (LEGACY - use constructor for new deployments)
     ///
     /// # Arguments
     /// * `admin` - Admin address for emergency functions
@@ -493,13 +522,32 @@ mod tests {
     use super::*;
     use soroban_sdk::testutils::Address as _;
 
+    /// Helper to register bridge with constructor args (CAP-58 pattern)
+    fn register_bridge<'a>(
+        env: &'a Env,
+        admin: &Address,
+        factory: &Address,
+        staking: &Address,
+        launchpad: &Address,
+        quote_token: &Address,
+    ) -> AstroSwapBridgeClient<'a> {
+        let bridge_addr = env.register(
+            AstroSwapBridge,
+            (
+                admin.clone(),
+                factory.clone(),
+                staking.clone(),
+                launchpad.clone(),
+                quote_token.clone(),
+            ),
+        );
+        AstroSwapBridgeClient::new(env, &bridge_addr)
+    }
+
     #[test]
-    fn test_initialize() {
+    fn test_constructor_initializes_bridge() {
         let env = Env::default();
         env.mock_all_auths();
-
-        let contract_id = env.register(AstroSwapBridge, ());
-        let client = AstroSwapBridgeClient::new(&env, &contract_id);
 
         let admin = Address::generate(&env);
         let factory = Address::generate(&env);
@@ -507,7 +555,8 @@ mod tests {
         let launchpad = Address::generate(&env);
         let quote_token = Address::generate(&env);
 
-        client.initialize(&admin, &factory, &staking, &launchpad, &quote_token);
+        // Constructor runs atomically with registration (CAP-58)
+        let client = register_bridge(&env, &admin, &factory, &staking, &launchpad, &quote_token);
 
         assert_eq!(client.admin(), admin);
         assert_eq!(client.factory(), factory);
@@ -519,12 +568,9 @@ mod tests {
     }
 
     #[test]
-    fn test_cannot_initialize_twice() {
+    fn test_legacy_initialize_fails_after_constructor() {
         let env = Env::default();
         env.mock_all_auths();
-
-        let contract_id = env.register(AstroSwapBridge, ());
-        let client = AstroSwapBridgeClient::new(&env, &contract_id);
 
         let admin = Address::generate(&env);
         let factory = Address::generate(&env);
@@ -532,10 +578,12 @@ mod tests {
         let launchpad = Address::generate(&env);
         let quote_token = Address::generate(&env);
 
-        client.initialize(&admin, &factory, &staking, &launchpad, &quote_token);
+        // Contract is already initialized via constructor
+        let client = register_bridge(&env, &admin, &factory, &staking, &launchpad, &quote_token);
 
-        // Second initialization should fail
-        let result = client.try_initialize(&admin, &factory, &staking, &launchpad, &quote_token);
+        // Legacy initialize should fail with AlreadyInitialized error
+        let other_admin = Address::generate(&env);
+        let result = client.try_initialize(&other_admin, &factory, &staking, &launchpad, &quote_token);
         assert!(result.is_err());
     }
 
@@ -544,16 +592,13 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register(AstroSwapBridge, ());
-        let client = AstroSwapBridgeClient::new(&env, &contract_id);
-
         let admin = Address::generate(&env);
         let factory = Address::generate(&env);
         let staking = Address::generate(&env);
         let launchpad = Address::generate(&env);
         let quote_token = Address::generate(&env);
 
-        client.initialize(&admin, &factory, &staking, &launchpad, &quote_token);
+        let client = register_bridge(&env, &admin, &factory, &staking, &launchpad, &quote_token);
 
         let unknown_token = Address::generate(&env);
         assert!(!client.is_graduated(&unknown_token));
@@ -564,16 +609,13 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register(AstroSwapBridge, ());
-        let client = AstroSwapBridgeClient::new(&env, &contract_id);
-
         let admin = Address::generate(&env);
         let factory = Address::generate(&env);
         let staking = Address::generate(&env);
         let launchpad = Address::generate(&env);
         let quote_token = Address::generate(&env);
 
-        client.initialize(&admin, &factory, &staking, &launchpad, &quote_token);
+        let client = register_bridge(&env, &admin, &factory, &staking, &launchpad, &quote_token);
 
         assert!(!client.is_paused());
 
@@ -589,9 +631,6 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register(AstroSwapBridge, ());
-        let client = AstroSwapBridgeClient::new(&env, &contract_id);
-
         let admin = Address::generate(&env);
         let factory = Address::generate(&env);
         let staking = Address::generate(&env);
@@ -599,7 +638,7 @@ mod tests {
         let quote_token = Address::generate(&env);
         let new_launchpad = Address::generate(&env);
 
-        client.initialize(&admin, &factory, &staking, &launchpad, &quote_token);
+        let client = register_bridge(&env, &admin, &factory, &staking, &launchpad, &quote_token);
         assert_eq!(client.launchpad(), Some(launchpad));
 
         client.set_launchpad(&admin, &new_launchpad);

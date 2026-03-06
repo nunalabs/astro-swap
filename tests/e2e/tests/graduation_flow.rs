@@ -164,25 +164,25 @@ impl<'a> TestContext<'a> {
         );
         let staking = AstroSwapStakingClient::new(&env, &staking_id);
 
-        // Deploy bridge
-        let bridge_id = env.register(AstroSwapBridge, ());
-        let bridge = AstroSwapBridgeClient::new(&env, &bridge_id);
-
-        // Create quote token (XLM wrapper)
+        // Create quote token (XLM wrapper) - needed for bridge constructor
         let quote_token_admin_addr = Address::generate(&env);
         let quote_token_contract = env.register_stellar_asset_contract_v2(quote_token_admin_addr.clone());
         let quote_token = quote_token_contract.address();
         let quote_token_admin = token::StellarAssetClient::new(&env, &quote_token);
         let quote_token_client = token::Client::new(&env, &quote_token);
 
-        // Initialize bridge
-        bridge.initialize(
-            &admin,
-            &factory_id,
-            &staking_id,
-            &launchpad,
-            &quote_token,
+        // Deploy bridge with constructor args (CAP-58)
+        let bridge_id = env.register(
+            AstroSwapBridge,
+            (
+                admin.clone(),
+                factory_id.clone(),
+                staking_id.clone(),
+                launchpad.clone(),
+                quote_token.clone(),
+            ),
         );
+        let bridge = AstroSwapBridgeClient::new(&env, &bridge_id);
 
         // Create graduated token (the token being graduated from launchpad)
         let graduated_token_admin_addr = Address::generate(&env);

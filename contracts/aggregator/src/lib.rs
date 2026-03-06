@@ -42,9 +42,42 @@ pub struct AstroSwapAggregator;
 
 #[contractimpl]
 impl AstroSwapAggregator {
-    // ==================== Initialization ====================
+    // ==================== Constructor (CAP-58) ====================
 
-    /// Initialize the aggregator contract
+    /// Constructor - runs atomically with contract deployment
+    /// Prevents front-running attacks during initialization
+    ///
+    /// # Arguments
+    /// * `admin` - Address with admin privileges
+    /// * `astroswap_factory` - AstroSwap factory address (auto-registered as Protocol 0)
+    pub fn __constructor(env: Env, admin: Address, astroswap_factory: Address) {
+        set_admin(&env, &admin);
+        set_initialized(&env);
+
+        // Set default configuration
+        let config = AggregatorConfig {
+            max_hops: MAX_HOPS,
+            max_splits: 2,
+            aggregator_fee_bps: 5, // 0.05%
+        };
+        set_config(&env, &config);
+
+        // Auto-register AstroSwap as Protocol 0
+        let astroswap_adapter = ProtocolAdapter {
+            protocol_id: 0,
+            factory_address: astroswap_factory,
+            is_active: true,
+            default_fee_bps: 30, // 0.3%
+        };
+        set_protocol(&env, 0, &astroswap_adapter);
+        set_protocol_count(&env, 1);
+
+        extend_instance_ttl(&env);
+    }
+
+    // ==================== Legacy Initialization ====================
+
+    /// Initialize the aggregator contract (LEGACY - use constructor for new deployments)
     ///
     /// # Arguments
     /// * `admin` - Address with admin privileges
@@ -789,18 +822,29 @@ mod tests {
     use super::*;
     use soroban_sdk::testutils::Address as _;
 
+    /// Helper to register aggregator with constructor args (CAP-58 pattern)
+    fn register_aggregator<'a>(
+        env: &'a Env,
+        admin: &Address,
+        factory: &Address,
+    ) -> AstroSwapAggregatorClient<'a> {
+        let aggregator_addr = env.register(
+            AstroSwapAggregator,
+            (admin.clone(), factory.clone()),
+        );
+        AstroSwapAggregatorClient::new(env, &aggregator_addr)
+    }
+
     #[test]
-    fn test_initialize() {
+    fn test_constructor_initializes_aggregator() {
         let env = Env::default();
         env.mock_all_auths();
-
-        let contract_id = env.register(AstroSwapAggregator, ());
-        let client = AstroSwapAggregatorClient::new(&env, &contract_id);
 
         let admin = Address::generate(&env);
         let factory = Address::generate(&env);
 
-        client.initialize(&admin, &factory);
+        // Constructor runs atomically with registration (CAP-58)
+        let client = register_aggregator(&env, &admin, &factory);
 
         assert_eq!(client.admin(), admin);
         assert_eq!(client.protocol_count(), 1);
@@ -808,20 +852,19 @@ mod tests {
     }
 
     #[test]
-    fn test_cannot_initialize_twice() {
+    fn test_legacy_initialize_fails_after_constructor() {
         let env = Env::default();
         env.mock_all_auths();
-
-        let contract_id = env.register(AstroSwapAggregator, ());
-        let client = AstroSwapAggregatorClient::new(&env, &contract_id);
 
         let admin = Address::generate(&env);
         let factory = Address::generate(&env);
 
-        client.initialize(&admin, &factory);
+        // Contract is already initialized via constructor
+        let client = register_aggregator(&env, &admin, &factory);
 
-        // Second initialization should fail
-        let result = client.try_initialize(&admin, &factory);
+        // Legacy initialize should fail with AlreadyInitialized error
+        let other_admin = Address::generate(&env);
+        let result = client.try_initialize(&other_admin, &factory);
         assert!(result.is_err());
     }
 
@@ -830,14 +873,11 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register(AstroSwapAggregator, ());
-        let client = AstroSwapAggregatorClient::new(&env, &contract_id);
-
         let admin = Address::generate(&env);
         let factory = Address::generate(&env);
         let soroswap = Address::generate(&env);
 
-        client.initialize(&admin, &factory);
+        let client = register_aggregator(&env, &admin, &factory);
 
         // Register Soroswap
         client.register_protocol(&admin, &Protocol::Soroswap, &soroswap, &30);
@@ -856,13 +896,10 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register(AstroSwapAggregator, ());
-        let client = AstroSwapAggregatorClient::new(&env, &contract_id);
-
         let admin = Address::generate(&env);
         let factory = Address::generate(&env);
 
-        client.initialize(&admin, &factory);
+        let client = register_aggregator(&env, &admin, &factory);
 
         // Update config
         client.set_config(&admin, &2, &1, &10);
@@ -878,13 +915,10 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register(AstroSwapAggregator, ());
-        let client = AstroSwapAggregatorClient::new(&env, &contract_id);
-
         let admin = Address::generate(&env);
         let factory = Address::generate(&env);
 
-        client.initialize(&admin, &factory);
+        let client = register_aggregator(&env, &admin, &factory);
 
         assert!(!client.is_paused());
 
@@ -892,26 +926,6 @@ mod tests {
         assert!(client.is_paused());
 
         client.set_paused(&admin, &false);
-        assert!(!client.is_paused());
-    }
-
-    #[test]
-    fn test_reentrancy_guard_initialized() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let contract_id = env.register(AstroSwapAggregator, ());
-        let client = AstroSwapAggregatorClient::new(&env, &contract_id);
-
-        let admin = Address::generate(&env);
-        let factory = Address::generate(&env);
-
-        client.initialize(&admin, &factory);
-
-        // Verify reentrancy lock starts as false
-        // (we can't directly access is_locked, but we test it indirectly through behavior)
-        // If we could call swap here it wouldn't fail with Reentrancy error
-        // This test just confirms initialization works with the new storage key
         assert!(!client.is_paused());
     }
 }

@@ -100,22 +100,26 @@ impl TestContext {
         );
         let staking = astroswap_staking::AstroSwapStakingClient::new(&env, &staking_address);
 
-        // Deploy aggregator (legacy initialize - no constructor yet)
-        let aggregator_address = env.register(astroswap_aggregator::AstroSwapAggregator, ());
-        let aggregator = astroswap_aggregator::AstroSwapAggregatorClient::new(&env, &aggregator_address);
-        aggregator.initialize(&admin, &factory_address);
-
-        // Deploy bridge (legacy initialize - no constructor yet)
-        let bridge_address = env.register(astroswap_bridge::AstroSwapBridge, ());
-        let bridge = astroswap_bridge::AstroSwapBridgeClient::new(&env, &bridge_address);
-        let launchpad = Address::generate(&env); // Mock launchpad address
-        bridge.initialize(
-            &admin,
-            &factory_address,
-            &staking_address,
-            &launchpad,
-            &xlm_address,
+        // Deploy aggregator with constructor args (CAP-58)
+        let aggregator_address = env.register(
+            astroswap_aggregator::AstroSwapAggregator,
+            (admin.clone(), factory_address.clone()),
         );
+        let aggregator = astroswap_aggregator::AstroSwapAggregatorClient::new(&env, &aggregator_address);
+
+        // Deploy bridge with constructor args (CAP-58)
+        let launchpad = Address::generate(&env); // Mock launchpad address
+        let bridge_address = env.register(
+            astroswap_bridge::AstroSwapBridge,
+            (
+                admin.clone(),
+                factory_address.clone(),
+                staking_address.clone(),
+                launchpad.clone(),
+                xlm_address.clone(),
+            ),
+        );
+        let bridge = astroswap_bridge::AstroSwapBridgeClient::new(&env, &bridge_address);
 
         Self {
             env,
