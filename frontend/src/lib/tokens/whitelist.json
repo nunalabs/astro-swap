@@ -1,10 +1,11 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "updated": "2026-03-06",
   "tokens": [
     {
       "code": "XLM",
       "issuer": "native",
+      "contractId": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
       "name": "Stellar Lumens",
       "symbol": "XLM",
       "decimals": 7,
@@ -26,6 +27,7 @@
     {
       "code": "yUSDC",
       "issuer": "GDGTVWSM4MGS4T7Z6W4RPWOCHE2I6RDFCIFZGS3DOA63LWQTRNZNTTFF",
+      "contractId": "CABWYQLGOQ5Y3RIYUVYJZVA355YVX4SPAMN6ORDAVJZQBPPHLHRRLNMS",
       "name": "yUSDC (Testnet)",
       "symbol": "yUSDC",
       "decimals": 7,
