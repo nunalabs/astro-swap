@@ -229,7 +229,7 @@ dependencies = [
 [[package]]
 name = "astro-core-shared"
 version = "1.4.0"
-source = "git+https://github.com/nunalabs/astro-core?tag=v1.4.0#1b05a5ccbd07bbe1d3680e2729ce99f3eb1ad7b9"
+source = "git+https://github.com/nunalabs/astro-core?tag=v1.5.0#7d6e24902be7bdf4cb6a2ad6ee9ff1b8fec2350b"
 dependencies = [
  "soroban-sdk",
 ]
