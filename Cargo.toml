@@ -23,9 +23,9 @@ license = "GPL-3.0"
 repository = "https://github.com/astro-shiba/astroswap"
 
 [workspace.dependencies]
-soroban-sdk = "23.2.1"
-soroban-token-sdk = "23.2.1"
-astro-core-shared = { git = "https://github.com/nunalabs/astro-core", tag = "v1.3.0" }
+soroban-sdk = "25.2.0"
+soroban-token-sdk = "25.2.0"
+astro-core-shared = { git = "https://github.com/nunalabs/astro-core", tag = "v1.4.0" }
 
 [profile.release]
 opt-level = "z"

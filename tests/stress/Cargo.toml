@@ -7,8 +7,8 @@ license = "GPL-3.0"
 publish = false
 
 [dependencies]
-soroban-sdk = { version = "23.2.1", features = ["testutils"] }
-soroban-token-sdk = { version = "23.2.1" }
+soroban-sdk = { workspace = true, features = ["testutils"] }
+soroban-token-sdk = { workspace = true }
 
 # Contract dependencies
 astroswap_factory = { package = "astroswap-factory", path = "../../contracts/factory" }

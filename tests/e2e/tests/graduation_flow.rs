@@ -116,10 +116,10 @@ impl<'a> TestContext<'a> {
         // Use mock_all_auths_allowing_non_root_auth for contract-to-contract calls
         env.mock_all_auths_allowing_non_root_auth();
 
-        // Set initial ledger state (protocol version 23 required for SDK 23)
+        // Set initial ledger state (protocol version 25 required for SDK 25)
         env.ledger().set(LedgerInfo {
             timestamp: 1700000000,
-            protocol_version: 23,
+            protocol_version: 25,
             sequence_number: 1000,
             network_id: [0; 32],
             base_reserve: 10,
