@@ -21,6 +21,21 @@ fn mint_token(env: &Env, token_addr: &Address, _admin: &Address, to: &Address, a
     sac.mint(to, &amount);
 }
 
+// Helper to register pair with constructor (CAP-58 compatible)
+fn register_pair<'a>(
+    env: &'a Env,
+    factory: &Address,
+    token_0: &Address,
+    token_1: &Address,
+) -> AstroSwapPairClient<'a> {
+    // Use constructor args - SDK 25.x requires this when __constructor is defined
+    let pair_addr = env.register(
+        AstroSwapPair,
+        (factory.clone(), token_0.clone(), token_1.clone()),
+    );
+    AstroSwapPairClient::new(env, &pair_addr)
+}
+
 // Helper to setup pair with initial liquidity
 fn setup_pair_with_liquidity(
     env: &Env,
@@ -39,11 +54,8 @@ fn setup_pair_with_liquidity(
     let (token_0_client, token_0_addr) = create_token(env, &admin);
     let (token_1_client, token_1_addr) = create_token(env, &admin);
 
-    // Register and initialize pair
-    let pair_addr = env.register(AstroSwapPair, ());
-    let pair_client = AstroSwapPairClient::new(env, &pair_addr);
-
-    pair_client.initialize(&factory, &token_0_addr, &token_1_addr);
+    // Register pair with constructor args (CAP-58)
+    let pair_client = register_pair(env, &factory, &token_0_addr, &token_1_addr);
 
     // Mint tokens to user (10_000_000_000_000 = 1M tokens with 7 decimals)
     mint_token(env, &token_0_addr, &admin, &user, 10_000_000_000_000);
@@ -62,7 +74,7 @@ fn setup_pair_with_liquidity(
 // ==================== Initialization Tests ====================
 
 #[test]
-fn test_initialize_success() {
+fn test_constructor_success() {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -70,10 +82,8 @@ fn test_initialize_success() {
     let token_0 = Address::generate(&env);
     let token_1 = Address::generate(&env);
 
-    let contract_id = env.register(AstroSwapPair, ());
-    let client = AstroSwapPairClient::new(&env, &contract_id);
-
-    client.initialize(&factory, &token_0, &token_1);
+    // Use constructor args (CAP-58)
+    let client = register_pair(&env, &factory, &token_0, &token_1);
 
     assert_eq!(client.factory(), factory);
     assert_eq!(client.token_0(), token_0);
@@ -83,23 +93,20 @@ fn test_initialize_success() {
 }
 
 #[test]
-fn test_initialize_with_same_token_fails() {
+#[should_panic(expected = "same token")]
+fn test_constructor_with_same_token_fails() {
     let env = Env::default();
     env.mock_all_auths();
 
     let factory = Address::generate(&env);
     let token = Address::generate(&env);
 
-    let contract_id = env.register(AstroSwapPair, ());
-    let client = AstroSwapPairClient::new(&env, &contract_id);
-
-    // Should fail with SameToken error
-    let result = client.try_initialize(&factory, &token, &token);
-    assert!(result.is_err());
+    // Constructor should panic with "same token"
+    let _addr = env.register(AstroSwapPair, (factory, token.clone(), token));
 }
 
 #[test]
-fn test_double_initialize_fails() {
+fn test_legacy_initialize_fails_after_constructor() {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -107,13 +114,10 @@ fn test_double_initialize_fails() {
     let token_0 = Address::generate(&env);
     let token_1 = Address::generate(&env);
 
-    let contract_id = env.register(AstroSwapPair, ());
-    let client = AstroSwapPairClient::new(&env, &contract_id);
+    // Contract already initialized via constructor
+    let client = register_pair(&env, &factory, &token_0, &token_1);
 
-    // First initialization succeeds
-    client.initialize(&factory, &token_0, &token_1);
-
-    // Second initialization fails
+    // Legacy initialize should fail (already initialized)
     let result = client.try_initialize(&factory, &token_0, &token_1);
     assert!(result.is_err());
 }

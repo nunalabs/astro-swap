@@ -79,27 +79,33 @@ impl TestContext {
         // Deploy pair WASM and get hash
         let pair_wasm_hash = env.deployer().upload_contract_wasm(crate::pair_wasm::WASM);
 
-        // Deploy factory
-        let factory_address = env.register(astroswap_factory::AstroSwapFactory, ());
+        // Deploy factory with constructor args (CAP-58)
+        let factory_address = env.register(
+            astroswap_factory::AstroSwapFactory,
+            (admin.clone(), pair_wasm_hash.clone(), 30u32), // 0.3% fee
+        );
         let factory = astroswap_factory::AstroSwapFactoryClient::new(&env, &factory_address);
-        factory.initialize(&admin, &pair_wasm_hash, &30); // 0.3% fee
 
-        // Deploy router
-        let router_address = env.register(astroswap_router::AstroSwapRouter, ());
+        // Deploy router with constructor args (CAP-58)
+        let router_address = env.register(
+            astroswap_router::AstroSwapRouter,
+            (factory_address.clone(), admin.clone()),
+        );
         let router = astroswap_router::AstroSwapRouterClient::new(&env, &router_address);
-        router.initialize(&factory_address, &admin);
 
-        // Deploy staking
-        let staking_address = env.register(astroswap_staking::AstroSwapStaking, ());
+        // Deploy staking with constructor args (CAP-58)
+        let staking_address = env.register(
+            astroswap_staking::AstroSwapStaking,
+            (admin.clone(), xlm_address.clone()), // Using XLM as reward token
+        );
         let staking = astroswap_staking::AstroSwapStakingClient::new(&env, &staking_address);
-        staking.initialize(&admin, &xlm_address); // Using XLM as reward token
 
-        // Deploy aggregator
+        // Deploy aggregator (legacy initialize - no constructor yet)
         let aggregator_address = env.register(astroswap_aggregator::AstroSwapAggregator, ());
         let aggregator = astroswap_aggregator::AstroSwapAggregatorClient::new(&env, &aggregator_address);
         aggregator.initialize(&admin, &factory_address);
 
-        // Deploy bridge
+        // Deploy bridge (legacy initialize - no constructor yet)
         let bridge_address = env.register(astroswap_bridge::AstroSwapBridge, ());
         let bridge = astroswap_bridge::AstroSwapBridgeClient::new(&env, &bridge_address);
         let launchpad = Address::generate(&env); // Mock launchpad address

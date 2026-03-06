@@ -95,25 +95,21 @@ impl AstroSwapFactory {
         salt_preimage.append(&token_1.clone().to_xdr(&env));
         let salt = env.crypto().sha256(&salt_preimage);
 
-        // Deploy pair contract with deploy_v2 (no constructor args)
+        // Deploy pair contract with constructor args (CAP-58)
+        // Constructor signature: __constructor(factory, token_0, token_1)
         let pair_address = env
             .deployer()
             .with_current_contract(salt)
-            .deploy_v2(pair_wasm_hash, ());
+            .deploy_v2(
+                pair_wasm_hash,
+                (
+                    env.current_contract_address(), // factory
+                    token_0.clone(),                // token_0
+                    token_1.clone(),                // token_1
+                ),
+            );
 
-        // Initialize the pair contract via cross-contract call
-        env.invoke_contract::<()>(
-            &pair_address,
-            &Symbol::new(&env, "initialize"),
-            Vec::from_array(
-                &env,
-                [
-                    env.current_contract_address().to_val(), // factory
-                    token_0.clone().to_val(),
-                    token_1.clone().to_val(),
-                ],
-            ),
-        );
+        // Note: No separate initialize call needed - constructor handles it
 
         // Store pair mapping
         set_pair(&env, &token_0, &token_1, &pair_address);
@@ -387,68 +383,67 @@ mod tests {
     use super::*;
     use soroban_sdk::testutils::Address as _;
 
+    /// Helper to register factory with constructor args (CAP-58 pattern)
+    fn register_factory<'a>(
+        env: &'a Env,
+        admin: &Address,
+        wasm_hash: &BytesN<32>,
+        protocol_fee_bps: u32,
+    ) -> AstroSwapFactoryClient<'a> {
+        let factory_addr = env.register(
+            AstroSwapFactory,
+            (admin.clone(), wasm_hash.clone(), protocol_fee_bps),
+        );
+        AstroSwapFactoryClient::new(env, &factory_addr)
+    }
+
     #[test]
-    fn test_initialize() {
+    fn test_constructor_initializes_factory() {
         let env = Env::default();
         env.mock_all_auths();
-
-        let contract_id = env.register(AstroSwapFactory, ());
-        let client = AstroSwapFactoryClient::new(&env, &contract_id);
 
         let admin = Address::generate(&env);
         let wasm_hash = BytesN::from_array(&env, &[0u8; 32]);
 
-        client.initialize(&admin, &wasm_hash, &30);
+        // Constructor runs atomically with registration (CAP-58)
+        let client = register_factory(&env, &admin, &wasm_hash, 30);
 
-        // admin() now returns Result, the client auto-unwraps
+        // Verify state is initialized correctly
         assert_eq!(client.admin(), admin);
         assert_eq!(client.protocol_fee_bps(), 30);
         assert_eq!(client.all_pairs_length(), 0);
     }
 
     #[test]
-    fn test_cannot_initialize_twice() {
+    fn test_legacy_initialize_fails_after_constructor() {
         let env = Env::default();
         env.mock_all_auths();
-
-        let contract_id = env.register(AstroSwapFactory, ());
-        let client = AstroSwapFactoryClient::new(&env, &contract_id);
 
         let admin = Address::generate(&env);
         let wasm_hash = BytesN::from_array(&env, &[0u8; 32]);
 
-        // First initialization should succeed
-        client.initialize(&admin, &wasm_hash, &30);
+        // Contract is already initialized via constructor
+        let client = register_factory(&env, &admin, &wasm_hash, 30);
 
-        // Second initialization should fail with AlreadyInitialized error (#1)
-        let result = client.try_initialize(&admin, &wasm_hash, &30);
+        // Legacy initialize should fail with AlreadyInitialized error
+        let other_admin = Address::generate(&env);
+        let result = client.try_initialize(&other_admin, &wasm_hash, &30);
         assert!(result.is_err());
     }
 
     #[test]
-    fn test_fee_too_high() {
+    #[should_panic(expected = "fee too high")]
+    fn test_constructor_fee_too_high_panics() {
         let env = Env::default();
         env.mock_all_auths();
-
-        let contract_id = env.register(AstroSwapFactory, ());
-        let client = AstroSwapFactoryClient::new(&env, &contract_id);
 
         let admin = Address::generate(&env);
         let wasm_hash = BytesN::from_array(&env, &[0u8; 32]);
 
-        // Fee of 200 bps (2%) should fail with FeeTooHigh error (#501)
-        let result = client.try_initialize(&admin, &wasm_hash, &200);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_uninitialized_contract_returns_error() {
-        let env = Env::default();
-
-        let contract_id = env.register(AstroSwapFactory, ());
-        let client = AstroSwapFactoryClient::new(&env, &contract_id);
-
-        // admin() should return NotInitialized error
-        assert!(client.try_admin().is_err());
+        // Constructor should panic with "fee too high" when fee > 100 bps
+        let _factory_addr = env.register(
+            AstroSwapFactory,
+            (admin.clone(), wasm_hash.clone(), 200u32), // 2% fee - too high
+        );
     }
 }

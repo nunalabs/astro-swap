@@ -133,20 +133,22 @@ impl<'a> TestContext<'a> {
         let launchpad = Address::generate(&env);
         let user = Address::generate(&env);
 
-        // Deploy factory
-        let factory_id = env.register(AstroSwapFactory, ());
-        let factory = AstroSwapFactoryClient::new(&env, &factory_id);
-
         // Deploy pair WASM (needed by factory)
         let pair_wasm_hash = env.deployer().upload_contract_wasm(pair_wasm::WASM);
 
-        // Initialize factory
-        factory.initialize(&admin, &pair_wasm_hash, &30); // 30 bps = 0.3% protocol fee
+        // Deploy factory with constructor args (CAP-58)
+        let factory_id = env.register(
+            AstroSwapFactory,
+            (admin.clone(), pair_wasm_hash.clone(), 30u32), // 30 bps = 0.3% protocol fee
+        );
+        let factory = AstroSwapFactoryClient::new(&env, &factory_id);
 
-        // Deploy router
-        let router_id = env.register(AstroSwapRouter, ());
+        // Deploy router with constructor args (CAP-58)
+        let router_id = env.register(
+            AstroSwapRouter,
+            (factory_id.clone(), admin.clone()),
+        );
         let router = AstroSwapRouterClient::new(&env, &router_id);
-        router.initialize(&factory_id, &admin);
 
         // Create reward token for staking
         let reward_token_admin_addr = Address::generate(&env);
@@ -155,10 +157,12 @@ impl<'a> TestContext<'a> {
         let reward_token_admin = token::StellarAssetClient::new(&env, &reward_token);
         let reward_token_client = token::Client::new(&env, &reward_token);
 
-        // Deploy staking
-        let staking_id = env.register(AstroSwapStaking, ());
+        // Deploy staking with constructor args (CAP-58)
+        let staking_id = env.register(
+            AstroSwapStaking,
+            (admin.clone(), reward_token.clone()),
+        );
         let staking = AstroSwapStakingClient::new(&env, &staking_id);
-        staking.initialize(&admin, &reward_token);
 
         // Deploy bridge
         let bridge_id = env.register(AstroSwapBridge, ());

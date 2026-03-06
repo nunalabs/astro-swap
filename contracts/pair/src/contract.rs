@@ -843,21 +843,33 @@ mod tests {
     use super::*;
     use soroban_sdk::testutils::Address as _;
 
+    /// Helper to register pair with constructor args (CAP-58 pattern)
+    fn register_pair<'a>(
+        env: &'a Env,
+        factory: &Address,
+        token_0: &Address,
+        token_1: &Address,
+    ) -> AstroSwapPairClient<'a> {
+        let pair_addr = env.register(
+            AstroSwapPair,
+            (factory.clone(), token_0.clone(), token_1.clone()),
+        );
+        AstroSwapPairClient::new(env, &pair_addr)
+    }
+
     #[test]
-    fn test_initialize() {
+    fn test_constructor_initializes_pair() {
         let env = Env::default();
         env.mock_all_auths();
-
-        let contract_id = env.register(AstroSwapPair, ());
-        let client = AstroSwapPairClient::new(&env, &contract_id);
 
         let factory = Address::generate(&env);
         let token_0 = Address::generate(&env);
         let token_1 = Address::generate(&env);
 
-        client.initialize(&factory, &token_0, &token_1);
+        // Constructor runs atomically with registration (CAP-58)
+        let client = register_pair(&env, &factory, &token_0, &token_1);
 
-        // View functions now return Result, the client auto-unwraps
+        // Verify state is initialized correctly
         assert_eq!(client.factory(), factory);
         assert_eq!(client.token_0(), token_0);
         assert_eq!(client.token_1(), token_1);
@@ -865,31 +877,36 @@ mod tests {
     }
 
     #[test]
-    fn test_same_token_fails() {
+    #[should_panic(expected = "same token")]
+    fn test_constructor_same_token_panics() {
         let env = Env::default();
         env.mock_all_auths();
-
-        let contract_id = env.register(AstroSwapPair, ());
-        let client = AstroSwapPairClient::new(&env, &contract_id);
 
         let factory = Address::generate(&env);
         let token = Address::generate(&env);
 
-        // Should fail with SameToken error (#101)
-        let result = client.try_initialize(&factory, &token, &token);
-        assert!(result.is_err());
+        // Constructor should panic with "same token" when both tokens are the same
+        let _pair_addr = env.register(
+            AstroSwapPair,
+            (factory.clone(), token.clone(), token.clone()),
+        );
     }
 
     #[test]
-    fn test_uninitialized_contract_returns_error() {
+    fn test_legacy_initialize_fails_after_constructor() {
         let env = Env::default();
+        env.mock_all_auths();
 
-        let contract_id = env.register(AstroSwapPair, ());
-        let client = AstroSwapPairClient::new(&env, &contract_id);
+        let factory = Address::generate(&env);
+        let token_0 = Address::generate(&env);
+        let token_1 = Address::generate(&env);
 
-        // View functions should return NotInitialized error
-        assert!(client.try_factory().is_err());
-        assert!(client.try_token_0().is_err());
-        assert!(client.try_token_1().is_err());
+        // Contract is already initialized via constructor
+        let client = register_pair(&env, &factory, &token_0, &token_1);
+
+        // Legacy initialize should return AlreadyInitialized error
+        let other_factory = Address::generate(&env);
+        let result = client.try_initialize(&other_factory, &token_0, &token_1);
+        assert!(result.is_err());
     }
 }
