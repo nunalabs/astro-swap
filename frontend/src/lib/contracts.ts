@@ -100,7 +100,23 @@ export async function getTotalSupply(
 }
 
 /**
- * Router Contract - Get amounts out for exact input
+ * Calculate amount out using constant product formula
+ * amountOut = (amountIn * reserveOut * (10000 - fee)) / (reserveIn * 10000 + amountIn * (10000 - fee))
+ *
+ * Fee is 30 bps (0.3%) = 9970/10000 after fee
+ */
+function calculateAmountOut(amountIn: bigint, reserveIn: bigint, reserveOut: bigint, feeBps = 30n): bigint {
+  if (reserveIn === 0n || reserveOut === 0n) return 0n;
+
+  const amountInWithFee = amountIn * (10000n - feeBps);
+  const numerator = amountInWithFee * reserveOut;
+  const denominator = reserveIn * 10000n + amountInWithFee;
+
+  return numerator / denominator;
+}
+
+/**
+ * Get amounts out for a path - calculates locally using pair reserves
  */
 export async function getAmountsOut(
   amountIn: string,
@@ -108,20 +124,57 @@ export async function getAmountsOut(
   sourceAddress: string
 ): Promise<string[]> {
   try {
-    const amountInScVal = StellarSdk.nativeToScVal(amountIn, { type: 'u128' });
-    const pathScVal = StellarSdk.nativeToScVal(
-      path.map(addr => ({ type: 'address', value: addr })),
-      { type: 'vec' }
-    );
+    if (path.length < 2) {
+      console.error('Path must have at least 2 tokens');
+      return [];
+    }
 
-    const result = await callContract(
-      CONTRACTS.ROUTER,
-      'get_amounts_out',
-      [amountInScVal, pathScVal],
-      sourceAddress
-    );
+    const amounts: string[] = [amountIn];
+    let currentAmount = BigInt(amountIn);
 
-    return result as string[];
+    for (let i = 0; i < path.length - 1; i++) {
+      const tokenIn = path[i];
+      const tokenOut = path[i + 1];
+
+      // Get pair address
+      const pairAddress = await getPairAddress(tokenIn, tokenOut, sourceAddress);
+      if (!pairAddress) {
+        console.error('Pair not found for', tokenIn, '->', tokenOut);
+        return [];
+      }
+
+      // Get reserves
+      const reserves = await getReserves(pairAddress, sourceAddress);
+      if (!reserves) {
+        console.error('Could not get reserves for pair', pairAddress);
+        return [];
+      }
+
+      // Get token order in the pair
+      const token0 = await callContract(pairAddress, 'token_0', [], sourceAddress) as string;
+
+      // Parse reserves as BigInt
+      let reserveIn: bigint;
+      let reserveOut: bigint;
+
+      if (Array.isArray(reserves)) {
+        // Handle array format [reserve0, reserve1]
+        const [r0, r1] = reserves;
+        reserveIn = tokenIn === token0 ? BigInt(r0) : BigInt(r1);
+        reserveOut = tokenIn === token0 ? BigInt(r1) : BigInt(r0);
+      } else {
+        // Handle object format { reserve0, reserve1 }
+        reserveIn = tokenIn === token0 ? BigInt(reserves.reserve0) : BigInt(reserves.reserve1);
+        reserveOut = tokenIn === token0 ? BigInt(reserves.reserve1) : BigInt(reserves.reserve0);
+      }
+
+      // Calculate output amount
+      const amountOut = calculateAmountOut(currentAmount, reserveIn, reserveOut);
+      amounts.push(amountOut.toString());
+      currentAmount = amountOut;
+    }
+
+    return amounts;
   } catch (error) {
     console.error('Error getting amounts out:', error);
     return [];
