@@ -1,5 +1,5 @@
 use astroswap_shared::{emit_pair_created, AstroSwapError, TokenMetadata};
-use soroban_sdk::{contract, contractimpl, xdr::ToXdr, Address, Bytes, BytesN, Env, Symbol, Vec};
+use soroban_sdk::{contract, contractimpl, xdr::ToXdr, Address, Bytes, BytesN, Env, Vec};
 
 use crate::storage::{
     add_pair_to_list, extend_instance_ttl, get_admin, get_fee_recipient, get_launchpad, get_pair,

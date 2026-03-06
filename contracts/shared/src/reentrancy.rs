@@ -47,6 +47,8 @@ pub struct ReentrancyGuard<'a, F>
 where
     F: Fn(&Env, bool),
 {
+    /// Inner guard - never read directly but needed for RAII Drop behavior
+    #[allow(dead_code)]
     inner: astro_core_shared::reentrancy::ReentrancyGuard<'a, F>,
 }
 
