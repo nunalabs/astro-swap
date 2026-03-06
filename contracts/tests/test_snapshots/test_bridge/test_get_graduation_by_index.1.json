@@ -4371,6 +4371,51 @@
                   "symbol": "Balance"
                 },
                 {
+                  "address": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAB7TB2M2MLHYKLA2JDKYKIUAAA53RJ4RFLFI3RW2CMY2OKWNMPKDHAE",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Balance"
+                    },
+                    {
+                      "address": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "i128": "1857417561100"
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          6311999
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAB7TB2M2MLHYKLA2JDKYKIUAAA53RJ4RFLFI3RW2CMY2OKWNMPKDHAE",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "Balance"
+                },
+                {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYRE5"
                 }
               ]
@@ -4591,7 +4636,7 @@
                           ]
                         },
                         "val": {
-                          "i128": "1000"
+                          "i128": "1857417562100"
                         }
                       }
                     ]
@@ -4936,6 +4981,51 @@
                   "symbol": "Balance"
                 },
                 {
+                  "address": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAFAIUKDMS6LTX7VM5LE3FBDKDFZKLRKWDBQXM7YO7QQJLG4MRQZLZUI",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Balance"
+                    },
+                    {
+                      "address": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "i128": "1857417561100"
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          6311999
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAFAIUKDMS6LTX7VM5LE3FBDKDFZKLRKWDBQXM7YO7QQJLG4MRQZLZUI",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "Balance"
+                },
+                {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYRE5"
                 }
               ]
@@ -5156,7 +5246,7 @@
                           ]
                         },
                         "val": {
-                          "i128": "1000"
+                          "i128": "1857417562100"
                         }
                       }
                     ]
@@ -6337,6 +6427,51 @@
                   "symbol": "Balance"
                 },
                 {
+                  "address": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CCZW3TWWKKUOXF42JS56QN4OFBXLUCPYIKR7YOAUP4YKAZGLLBNPDMTI",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Balance"
+                    },
+                    {
+                      "address": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "i128": "1857417561100"
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          6311999
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CCZW3TWWKKUOXF42JS56QN4OFBXLUCPYIKR7YOAUP4YKAZGLLBNPDMTI",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "Balance"
+                },
+                {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYRE5"
                 }
               ]
@@ -6557,7 +6692,7 @@
                           ]
                         },
                         "val": {
-                          "i128": "1000"
+                          "i128": "1857417562100"
                         }
                       }
                     ]

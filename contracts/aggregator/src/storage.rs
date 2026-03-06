@@ -2,6 +2,7 @@
 //!
 //! Manages protocol adapters, routing configuration, and contract state.
 
+use astroswap_shared::AstroSwapError;
 use soroban_sdk::{contracttype, Address, Env};
 
 /// Protocol adapter information
@@ -63,11 +64,12 @@ pub fn set_initialized(env: &Env) {
 }
 
 /// Get the admin address
-pub fn get_admin(env: &Env) -> Address {
+/// Returns error if admin is not set (contract not initialized)
+pub fn get_admin(env: &Env) -> Result<Address, AstroSwapError> {
     env.storage()
         .instance()
         .get::<DataKey, Address>(&DataKey::Admin)
-        .expect("Admin not set")
+        .ok_or(AstroSwapError::NotInitialized)
 }
 
 /// Set the admin address

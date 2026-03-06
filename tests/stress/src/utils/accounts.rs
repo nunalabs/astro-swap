@@ -124,15 +124,16 @@ mod tests {
         let env = Env::default();
         let mut pool = AccountPool::new(&env, 3);
 
-        let first = pool.next();
-        let second = pool.next();
-        let third = pool.next();
-        let fourth = pool.next(); // Should wrap to first
+        // Clone addresses to avoid holding references across mutable borrows
+        let first = pool.next().clone();
+        let second = pool.next().clone();
+        let third = pool.next().clone();
+        let fourth = pool.next().clone(); // Should wrap to first
 
-        assert_eq!(first, pool.get(0).unwrap());
-        assert_eq!(second, pool.get(1).unwrap());
-        assert_eq!(third, pool.get(2).unwrap());
-        assert_eq!(fourth, pool.get(0).unwrap());
+        assert_eq!(&first, pool.get(0).unwrap());
+        assert_eq!(&second, pool.get(1).unwrap());
+        assert_eq!(&third, pool.get(2).unwrap());
+        assert_eq!(&fourth, pool.get(0).unwrap());
     }
 
     #[test]
@@ -144,7 +145,9 @@ mod tests {
         pool.next();
         pool.reset();
 
-        assert_eq!(pool.next(), pool.get(0).unwrap());
+        // Clone to avoid holding reference across borrow
+        let next = pool.next().clone();
+        assert_eq!(&next, pool.get(0).unwrap());
     }
 
     #[test]

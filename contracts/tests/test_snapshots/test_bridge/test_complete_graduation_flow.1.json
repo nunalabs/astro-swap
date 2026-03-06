@@ -2529,6 +2529,51 @@
                   "symbol": "Balance"
                 },
                 {
+                  "address": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAB7TB2M2MLHYKLA2JDKYKIUAAA53RJ4RFLFI3RW2CMY2OKWNMPKDHAE",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Balance"
+                    },
+                    {
+                      "address": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "i128": "1857417561100"
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          6311999
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAB7TB2M2MLHYKLA2JDKYKIUAAA53RJ4RFLFI3RW2CMY2OKWNMPKDHAE",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "Balance"
+                },
+                {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYRE5"
                 }
               ]
@@ -2749,7 +2794,7 @@
                           ]
                         },
                         "val": {
-                          "i128": "1000"
+                          "i128": "1857417562100"
                         }
                       }
                     ]

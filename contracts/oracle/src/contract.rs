@@ -61,7 +61,7 @@ impl AstroSwapOracle {
         source: String,
     ) -> Result<(), OracleError> {
         // Only admin can update prices
-        let admin = DataKey::get_admin(&env);
+        let admin = DataKey::get_admin(&env)?;
         admin.require_auth();
 
         // Validate price
@@ -152,7 +152,7 @@ impl AstroSwapOracle {
     /// * `threshold` - New staleness threshold in seconds
     pub fn set_staleness_threshold(env: Env, threshold: u64) -> Result<(), OracleError> {
         // Only admin can update settings
-        let admin = DataKey::get_admin(&env);
+        let admin = DataKey::get_admin(&env)?;
         admin.require_auth();
 
         // Validate threshold
@@ -172,7 +172,7 @@ impl AstroSwapOracle {
     /// * `feed_id` - DIA feed identifier (e.g., "BTC/USD")
     pub fn add_price_feed(env: Env, token: Address, feed_id: String) -> Result<(), OracleError> {
         // Only admin can add price feeds
-        let admin = DataKey::get_admin(&env);
+        let admin = DataKey::get_admin(&env)?;
         admin.require_auth();
 
         // Validate feed ID
@@ -197,7 +197,7 @@ impl AstroSwapOracle {
     }
 
     /// Get admin address
-    pub fn get_admin(env: Env) -> Address {
+    pub fn get_admin(env: Env) -> Result<Address, OracleError> {
         DataKey::get_admin(&env)
     }
 
@@ -212,7 +212,7 @@ impl AstroSwapOracle {
     /// * `new_admin` - New admin address
     pub fn set_admin(env: Env, new_admin: Address) -> Result<(), OracleError> {
         // Only current admin can change admin
-        let admin = DataKey::get_admin(&env);
+        let admin = DataKey::get_admin(&env)?;
         admin.require_auth();
 
         new_admin.require_auth();

@@ -124,9 +124,10 @@ impl ConcurrentScenario {
     ) {
         let timer = collector.start_operation();
         let pair_client = PairClient::new(env, pair_address);
+        let deadline = env.ledger().timestamp() + 3600; // 1 hour from now
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            pair_client.swap(user, token_in, amount_in, 1)
+            pair_client.swap(user, token_in, amount_in, 1, deadline)
         }));
 
         match result {

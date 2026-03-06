@@ -1,8 +1,8 @@
 use astroswap_shared::{
     calculate_k, calculate_liquidity_tokens, calculate_withdrawal_amounts, emit_deposit, emit_swap,
-    emit_withdraw, get_amount_in, get_amount_out, safe_sub, update_reserves_add, update_reserves_sub,
-    update_reserves_swap, verify_k_invariant, AstroSwapError, PairInfo, DEFAULT_SWAP_FEE_BPS,
-    MINIMUM_LIQUIDITY, MIN_TRADE_AMOUNT,
+    emit_withdraw, get_amount_in, get_amount_out, reentrancy::ReentrancyGuard, safe_sub,
+    update_reserves_add, update_reserves_sub, update_reserves_swap, verify_k_invariant,
+    AstroSwapError, PairInfo, DEFAULT_SWAP_FEE_BPS, MINIMUM_LIQUIDITY, MIN_TRADE_AMOUNT,
 };
 use soroban_sdk::{contract, contractimpl, token, Address, Env, String};
 
@@ -83,7 +83,7 @@ impl AstroSwapPair {
     /// Verify caller is factory (for admin functions)
     fn require_factory(env: &Env) -> Result<(), AstroSwapError> {
         Self::require_initialized(env)?;
-        let factory = get_factory(env);
+        let factory = get_factory(env)?;
         factory.require_auth();
         Ok(())
     }
@@ -178,8 +178,8 @@ impl AstroSwapPair {
         }
 
         // Transfer tokens from user to pool
-        let token_0 = get_token_0(&env);
-        let token_1 = get_token_1(&env);
+        let token_0 = get_token_0(&env)?;
+        let token_1 = get_token_1(&env)?;
 
         let token_0_client = token::Client::new(&env, &token_0);
         let token_1_client = token::Client::new(&env, &token_1);
@@ -279,8 +279,8 @@ impl AstroSwapPair {
         lp_token::burn(&env, &user, shares)?;
 
         // Transfer tokens to user
-        let token_0 = get_token_0(&env);
-        let token_1 = get_token_1(&env);
+        let token_0 = get_token_0(&env)?;
+        let token_1 = get_token_1(&env)?;
 
         let token_0_client = token::Client::new(&env, &token_0);
         let token_1_client = token::Client::new(&env, &token_1);
@@ -327,7 +327,8 @@ impl AstroSwapPair {
     /// * Amount of output token received
     ///
     /// # Security
-    /// Uses reentrancy guard to prevent flash loan attacks
+    /// Uses RAII reentrancy guard to prevent flash loan attacks.
+    /// Lock is automatically released when the guard goes out of scope.
     pub fn swap(
         env: Env,
         user: Address,
@@ -346,52 +347,45 @@ impl AstroSwapPair {
             return Err(AstroSwapError::DeadlineExpired);
         }
 
-        // Reentrancy guard
-        Self::acquire_lock(&env)?;
+        // RAII reentrancy guard - lock automatically released when _guard goes out of scope
+        let _guard = ReentrancyGuard::acquire(&env, is_locked, set_locked)?;
 
         user.require_auth();
 
         // Validate amount (must be positive and meet minimum trade amount)
         if amount_in <= 0 {
-            Self::release_lock(&env);
             return Err(AstroSwapError::InvalidAmount);
         }
 
         // Minimum trade amount to prevent dust attacks (0.1 XLM = 1_000_000 stroops)
         // Uses shared constant from astroswap_shared for consistency
         if amount_in < MIN_TRADE_AMOUNT {
-            Self::release_lock(&env);
             return Err(AstroSwapError::AmountBelowMinimum);
         }
 
-        let token_0 = get_token_0(&env);
-        let token_1 = get_token_1(&env);
+        let token_0 = get_token_0(&env)?;
+        let token_1 = get_token_1(&env)?;
 
-        // Determine swap direction
-        let (reserve_in, reserve_out, token_out, is_token_0_in) = if token_in == token_0 {
-            let (r0, r1) = get_reserves(&env);
-            (r0, r1, token_1.clone(), true)
+        // Determine swap direction - avoid unnecessary Address clones
+        let is_token_0_in = if token_in == token_0 {
+            true
         } else if token_in == token_1 {
-            let (r0, r1) = get_reserves(&env);
-            (r1, r0, token_0.clone(), false)
+            false
         } else {
-            Self::release_lock(&env);
             return Err(AstroSwapError::InvalidToken);
+        };
+
+        let (reserve_in, reserve_out) = {
+            let (r0, r1) = get_reserves(&env);
+            if is_token_0_in { (r0, r1) } else { (r1, r0) }
         };
 
         // Calculate output amount
         let fee_bps = get_fee_bps(&env);
-        let amount_out = match get_amount_out(amount_in, reserve_in, reserve_out, fee_bps) {
-            Ok(out) => out,
-            Err(e) => {
-                Self::release_lock(&env);
-                return Err(e);
-            }
-        };
+        let amount_out = get_amount_out(amount_in, reserve_in, reserve_out, fee_bps)?;
 
         // Check slippage
         if amount_out < min_out {
-            Self::release_lock(&env);
             return Err(AstroSwapError::SlippageExceeded);
         }
 
@@ -399,8 +393,9 @@ impl AstroSwapPair {
         let token_in_client = token::Client::new(&env, &token_in);
         token_in_client.transfer(&user, env.current_contract_address(), &amount_in);
 
-        // Transfer output tokens to user
-        let token_out_client = token::Client::new(&env, &token_out);
+        // Transfer output tokens to user - use reference to avoid clone
+        let token_out = if is_token_0_in { &token_1 } else { &token_0 };
+        let token_out_client = token::Client::new(&env, token_out);
         token_out_client.transfer(&env.current_contract_address(), &user, &amount_out);
 
         // Update reserves (with overflow/underflow protection)
@@ -409,25 +404,21 @@ impl AstroSwapPair {
         set_reserves(&env, new_reserve_0, new_reserve_1);
 
         // Verify k invariant (should increase slightly due to fees)
-        // Get original reserves for k comparison
         let (orig_reserve_0, orig_reserve_1) = if is_token_0_in {
             (reserve_in, reserve_out)
         } else {
             (reserve_out, reserve_in)
         };
         if !verify_k_invariant(new_reserve_0, new_reserve_1, orig_reserve_0, orig_reserve_1)? {
-            Self::release_lock(&env);
             return Err(AstroSwapError::InvalidAmount);
         }
 
         // Emit event
-        emit_swap(&env, &user, &token_in, &token_out, amount_in, amount_out);
+        emit_swap(&env, &user, &token_in, token_out, amount_in, amount_out);
 
         extend_instance_ttl(&env);
 
-        // Release reentrancy lock
-        Self::release_lock(&env);
-
+        // Lock automatically released when _guard goes out of scope
         Ok(amount_out)
     }
 
@@ -465,8 +456,8 @@ impl AstroSwapPair {
         // Reentrancy guard
         Self::acquire_lock(&env)?;
 
-        let token_0 = get_token_0(&env);
-        let token_1 = get_token_1(&env);
+        let token_0 = get_token_0(&env)?;
+        let token_1 = get_token_1(&env)?;
         let (reserve_0, reserve_1) = get_reserves(&env);
 
         // Get current balances
@@ -475,28 +466,39 @@ impl AstroSwapPair {
         let balance_0 = token_0_client.balance(&env.current_contract_address());
         let balance_1 = token_1_client.balance(&env.current_contract_address());
 
-        // Determine swap direction and calculate amount_in from balance diff (with underflow protection)
-        let (amount_in, reserve_in, reserve_out, token_out, is_token_0_in) = if token_in == token_0 {
-            let amount_in = match safe_sub(balance_0, reserve_0) {
-                Ok(amt) if amt > 0 => amt,
-                _ => {
-                    Self::release_lock(&env);
-                    return Err(AstroSwapError::InvalidAmount);
-                }
-            };
-            (amount_in, reserve_0, reserve_1, token_1.clone(), true)
+        // Determine swap direction - avoid unnecessary Address clones
+        let is_token_0_in = if token_in == token_0 {
+            true
         } else if token_in == token_1 {
-            let amount_in = match safe_sub(balance_1, reserve_1) {
-                Ok(amt) if amt > 0 => amt,
-                _ => {
-                    Self::release_lock(&env);
-                    return Err(AstroSwapError::InvalidAmount);
-                }
-            };
-            (amount_in, reserve_1, reserve_0, token_0.clone(), false)
+            false
         } else {
             Self::release_lock(&env);
             return Err(AstroSwapError::InvalidToken);
+        };
+
+        // Calculate amount_in from balance diff (with underflow protection)
+        let amount_in = if is_token_0_in {
+            match safe_sub(balance_0, reserve_0) {
+                Ok(amt) if amt > 0 => amt,
+                _ => {
+                    Self::release_lock(&env);
+                    return Err(AstroSwapError::InvalidAmount);
+                }
+            }
+        } else {
+            match safe_sub(balance_1, reserve_1) {
+                Ok(amt) if amt > 0 => amt,
+                _ => {
+                    Self::release_lock(&env);
+                    return Err(AstroSwapError::InvalidAmount);
+                }
+            }
+        };
+
+        let (reserve_in, reserve_out) = if is_token_0_in {
+            (reserve_0, reserve_1)
+        } else {
+            (reserve_1, reserve_0)
         };
 
         // SECURITY: Validate minimum trade amount to prevent dust attacks
@@ -522,8 +524,9 @@ impl AstroSwapPair {
             return Err(AstroSwapError::SlippageExceeded);
         }
 
-        // Transfer output tokens to recipient
-        let token_out_client = token::Client::new(&env, &token_out);
+        // Transfer output tokens to recipient - use reference to avoid clone
+        let token_out = if is_token_0_in { &token_1 } else { &token_0 };
+        let token_out_client = token::Client::new(&env, token_out);
         token_out_client.transfer(&env.current_contract_address(), &to, &amount_out);
 
         // Update reserves based on actual balances after output transfer (with underflow protection)
@@ -543,7 +546,7 @@ impl AstroSwapPair {
         }
 
         // Emit event
-        emit_swap(&env, &to, &token_in, &token_out, amount_in, amount_out);
+        emit_swap(&env, &to, &token_in, token_out, amount_in, amount_out);
 
         extend_instance_ttl(&env);
 
@@ -563,11 +566,11 @@ impl AstroSwapPair {
         // 1. Send tokens directly to the pair
         // 2. Call sync to update reserves
         // 3. Exploit the price change in the same transaction
-        let factory = get_factory(&env);
+        let factory = get_factory(&env)?;
         factory.require_auth();
 
-        let token_0 = get_token_0(&env);
-        let token_1 = get_token_1(&env);
+        let token_0 = get_token_0(&env)?;
+        let token_1 = get_token_1(&env)?;
 
         let token_0_client = token::Client::new(&env, &token_0);
         let token_1_client = token::Client::new(&env, &token_1);
@@ -593,13 +596,13 @@ impl AstroSwapPair {
         // SECURITY FIX: Only factory can call skim
         // This prevents exploitation where anyone could extract excess tokens
         // that may exist temporarily during deposit/swap operations
-        let factory = get_factory(&env);
+        let factory = get_factory(&env)?;
         factory.require_auth();
 
         Self::acquire_lock(&env)?;
 
-        let token_0 = get_token_0(&env);
-        let token_1 = get_token_1(&env);
+        let token_0 = get_token_0(&env)?;
+        let token_1 = get_token_1(&env)?;
         let (reserve_0, reserve_1) = get_reserves(&env);
 
         let token_0_client = token::Client::new(&env, &token_0);
@@ -635,29 +638,32 @@ impl AstroSwapPair {
     // ==================== View Functions ====================
 
     /// Get pair information
-    pub fn get_info(env: Env) -> PairInfo {
+    /// Returns error if contract is not initialized
+    pub fn get_info(env: Env) -> Result<PairInfo, AstroSwapError> {
         extend_instance_ttl(&env);
 
         let (reserve_a, reserve_b) = get_reserves(&env);
 
-        PairInfo {
-            token_a: get_token_0(&env),
-            token_b: get_token_1(&env),
+        Ok(PairInfo {
+            token_a: get_token_0(&env)?,
+            token_b: get_token_1(&env)?,
             reserve_a,
             reserve_b,
             total_shares: get_total_supply(&env),
             fee_bps: get_fee_bps(&env),
-        }
+        })
     }
 
     /// Get token 0 address
-    pub fn token_0(env: Env) -> Address {
+    /// Returns error if contract is not initialized
+    pub fn token_0(env: Env) -> Result<Address, AstroSwapError> {
         extend_instance_ttl(&env);
         get_token_0(&env)
     }
 
     /// Get token 1 address
-    pub fn token_1(env: Env) -> Address {
+    /// Returns error if contract is not initialized
+    pub fn token_1(env: Env) -> Result<Address, AstroSwapError> {
         extend_instance_ttl(&env);
         get_token_1(&env)
     }
@@ -669,7 +675,8 @@ impl AstroSwapPair {
     }
 
     /// Get factory address
-    pub fn factory(env: Env) -> Address {
+    /// Returns error if contract is not initialized
+    pub fn factory(env: Env) -> Result<Address, AstroSwapError> {
         extend_instance_ttl(&env);
         get_factory(&env)
     }
@@ -694,8 +701,8 @@ impl AstroSwapPair {
         amount_in: i128,
         token_in: Address,
     ) -> Result<i128, AstroSwapError> {
-        let token_0 = get_token_0(&env);
-        let token_1 = get_token_1(&env);
+        let token_0 = get_token_0(&env)?;
+        let token_1 = get_token_1(&env)?;
         let (reserve_0, reserve_1) = get_reserves(&env);
         let fee = get_fee_bps(&env);
 
@@ -716,8 +723,8 @@ impl AstroSwapPair {
         amount_out: i128,
         token_out: Address,
     ) -> Result<i128, AstroSwapError> {
-        let token_0 = get_token_0(&env);
-        let token_1 = get_token_1(&env);
+        let token_0 = get_token_0(&env)?;
+        let token_1 = get_token_1(&env)?;
         let (reserve_0, reserve_1) = get_reserves(&env);
         let fee = get_fee_bps(&env);
 
@@ -832,6 +839,7 @@ mod tests {
 
         client.initialize(&factory, &token_0, &token_1);
 
+        // View functions now return Result, the client auto-unwraps
         assert_eq!(client.factory(), factory);
         assert_eq!(client.token_0(), token_0);
         assert_eq!(client.token_1(), token_1);
@@ -852,5 +860,18 @@ mod tests {
         // Should fail with SameToken error (#101)
         let result = client.try_initialize(&factory, &token, &token);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_uninitialized_contract_returns_error() {
+        let env = Env::default();
+
+        let contract_id = env.register(AstroSwapPair, ());
+        let client = AstroSwapPairClient::new(&env, &contract_id);
+
+        // View functions should return NotInitialized error
+        assert!(client.try_factory().is_err());
+        assert!(client.try_token_0().is_err());
+        assert!(client.try_token_1().is_err());
     }
 }

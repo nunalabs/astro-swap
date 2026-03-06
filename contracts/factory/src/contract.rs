@@ -64,7 +64,7 @@ impl AstroSwapFactory {
         let (token_0, token_1) = sort_tokens(&token_a, &token_b);
 
         // Deploy new pair contract
-        let pair_wasm_hash = get_pair_wasm_hash(&env);
+        let pair_wasm_hash = get_pair_wasm_hash(&env)?;
 
         // Create deterministic contract ID based on tokens using XDR serialization
         // This is the recommended pattern from Stellar docs for deterministic addresses
@@ -124,6 +124,48 @@ impl AstroSwapFactory {
     pub fn all_pairs_length(env: Env) -> u32 {
         extend_instance_ttl(&env);
         get_pairs_count(&env)
+    }
+
+    /// Get pairs with pagination
+    ///
+    /// Returns a vector of pair addresses starting at `start_index` up to `limit` pairs.
+    /// This is more efficient than calling `get_pair_by_index` multiple times.
+    ///
+    /// # Arguments
+    /// * `start_index` - Index to start from (0-based)
+    /// * `limit` - Maximum number of pairs to return (capped at 100)
+    ///
+    /// # Returns
+    /// * Vector of pair addresses
+    pub fn get_pairs_paginated(env: Env, start_index: u32, limit: u32) -> Vec<Address> {
+        extend_instance_ttl(&env);
+
+        let total = get_pairs_count(&env);
+        let mut pairs = Vec::new(&env);
+
+        // Cap limit at 100 to prevent excessive gas usage
+        let max_limit = 100u32;
+        let effective_limit = if limit > max_limit { max_limit } else { limit };
+
+        // Return empty if start_index is beyond total pairs
+        if start_index >= total {
+            return pairs;
+        }
+
+        // Calculate end index (exclusive)
+        let end_index = {
+            let potential_end = start_index.saturating_add(effective_limit);
+            if potential_end > total { total } else { potential_end }
+        };
+
+        // Collect pairs
+        for i in start_index..end_index {
+            if let Some(pair) = get_pair_by_index(&env, i) {
+                pairs.push_back(pair);
+            }
+        }
+
+        pairs
     }
 
     /// Check if a pair exists
@@ -263,7 +305,8 @@ impl AstroSwapFactory {
     // ==================== View Functions ====================
 
     /// Get the admin address
-    pub fn admin(env: Env) -> Address {
+    /// Returns error if contract is not initialized
+    pub fn admin(env: Env) -> Result<Address, AstroSwapError> {
         extend_instance_ttl(&env);
         get_admin(&env)
     }
@@ -302,7 +345,7 @@ impl AstroSwapFactory {
     fn require_admin(env: &Env, caller: &Address) -> Result<(), AstroSwapError> {
         caller.require_auth();
 
-        if *caller != get_admin(env) {
+        if *caller != get_admin(env)? {
             return Err(AstroSwapError::Unauthorized);
         }
         Ok(())
@@ -335,6 +378,7 @@ mod tests {
 
         client.initialize(&admin, &wasm_hash, &30);
 
+        // admin() now returns Result, the client auto-unwraps
         assert_eq!(client.admin(), admin);
         assert_eq!(client.protocol_fee_bps(), 30);
         assert_eq!(client.all_pairs_length(), 0);
@@ -373,5 +417,16 @@ mod tests {
         // Fee of 200 bps (2%) should fail with FeeTooHigh error (#501)
         let result = client.try_initialize(&admin, &wasm_hash, &200);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_uninitialized_contract_returns_error() {
+        let env = Env::default();
+
+        let contract_id = env.register(AstroSwapFactory, ());
+        let client = AstroSwapFactoryClient::new(&env, &contract_id);
+
+        // admin() should return NotInitialized error
+        assert!(client.try_admin().is_err());
     }
 }

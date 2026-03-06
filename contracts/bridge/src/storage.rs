@@ -2,7 +2,7 @@
 //!
 //! Manages graduated token tracking and integration with Astro-Shiba launchpad.
 
-use astroswap_shared::GraduatedToken;
+use astroswap_shared::{AstroSwapError, GraduatedToken};
 use soroban_sdk::{contracttype, Address, Env};
 
 /// Storage keys for the bridge contract
@@ -41,11 +41,12 @@ pub fn set_initialized(env: &Env) {
 }
 
 /// Get the admin address
-pub fn get_admin(env: &Env) -> Address {
+/// Returns error if admin is not set (contract not initialized)
+pub fn get_admin(env: &Env) -> Result<Address, AstroSwapError> {
     env.storage()
         .instance()
         .get::<DataKey, Address>(&DataKey::Admin)
-        .expect("Admin not set")
+        .ok_or(AstroSwapError::NotInitialized)
 }
 
 /// Set the admin address
@@ -74,26 +75,18 @@ pub fn is_locked(env: &Env) -> bool {
         .unwrap_or(false)
 }
 
-/// Acquire reentrancy lock - returns error if already locked
-pub fn acquire_lock(env: &Env) -> bool {
-    if is_locked(env) {
-        return false;
-    }
-    env.storage().instance().set(&DataKey::Locked, &true);
-    true
-}
-
-/// Release reentrancy lock
-pub fn release_lock(env: &Env) {
-    env.storage().instance().set(&DataKey::Locked, &false);
+/// Set locked state (used by RAII ReentrancyGuard)
+pub fn set_locked(env: &Env, locked: bool) {
+    env.storage().instance().set(&DataKey::Locked, &locked);
 }
 
 /// Get factory address
-pub fn get_factory(env: &Env) -> Address {
+/// Returns error if factory is not set (contract not initialized)
+pub fn get_factory(env: &Env) -> Result<Address, AstroSwapError> {
     env.storage()
         .instance()
         .get::<DataKey, Address>(&DataKey::Factory)
-        .expect("Factory not set")
+        .ok_or(AstroSwapError::NotInitialized)
 }
 
 /// Set factory address
@@ -102,11 +95,12 @@ pub fn set_factory(env: &Env, factory: &Address) {
 }
 
 /// Get staking address
-pub fn get_staking(env: &Env) -> Address {
+/// Returns error if staking is not set (contract not initialized)
+pub fn get_staking(env: &Env) -> Result<Address, AstroSwapError> {
     env.storage()
         .instance()
         .get::<DataKey, Address>(&DataKey::Staking)
-        .expect("Staking not set")
+        .ok_or(AstroSwapError::NotInitialized)
 }
 
 /// Set staking address

@@ -24,6 +24,7 @@ pub enum OracleError {
     InvalidWindow = 851,
     WindowTooLarge = 852,
     ObservationTooOld = 853,
+    InvalidObservationIndex = 854,
 
     // Configuration errors (870-889)
     InvalidStalenessThreshold = 870,

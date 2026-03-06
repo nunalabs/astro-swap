@@ -4238,6 +4238,51 @@
                   "symbol": "Balance"
                 },
                 {
+                  "address": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CDYQPMV4GD2RHI4VDZTS7E62HSISHGJKE2MYWRCVE6STV3B2XDHQMI55",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Balance"
+                    },
+                    {
+                      "address": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "i128": "1857417561100"
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          6311999
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CDYQPMV4GD2RHI4VDZTS7E62HSISHGJKE2MYWRCVE6STV3B2XDHQMI55",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "Balance"
+                },
+                {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYRE5"
                 }
               ]
@@ -4458,7 +4503,7 @@
                           ]
                         },
                         "val": {
-                          "i128": "1000"
+                          "i128": "1857417562100"
                         }
                       }
                     ]
@@ -5336,7 +5381,7 @@
           "v0": {
             "topics": [
               {
-                "symbol": "burn"
+                "symbol": "transfer"
               }
             ],
             "data": {
@@ -5355,6 +5400,14 @@
                   },
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYRE5"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "to"
+                  },
+                  "val": {
+                    "address": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
                   }
                 }
               ]

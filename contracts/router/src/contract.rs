@@ -89,7 +89,7 @@ impl AstroSwapRouter {
         }
 
         // Get factory and first pair
-        let factory = get_factory(&env);
+        let factory = get_factory(&env)?;
         let factory_client = FactoryClient::new(&env, &factory);
 
         let token_in = path.get(0).ok_or(AstroSwapError::InvalidPath)?;
@@ -153,7 +153,7 @@ impl AstroSwapRouter {
         }
 
         // Get factory and first pair
-        let factory = get_factory(&env);
+        let factory = get_factory(&env)?;
         let factory_client = FactoryClient::new(&env, &factory);
 
         let token_in = path.get(0).ok_or(AstroSwapError::InvalidPath)?;
@@ -198,7 +198,7 @@ impl AstroSwapRouter {
         Self::check_deadline(&env, deadline)?;
 
         // Get factory and pair
-        let factory = get_factory(&env);
+        let factory = get_factory(&env)?;
         let factory_client = FactoryClient::new(&env, &factory);
 
         // Get or create pair
@@ -270,7 +270,7 @@ impl AstroSwapRouter {
         Self::check_deadline(&env, deadline)?;
 
         // Get factory and pair
-        let factory = get_factory(&env);
+        let factory = get_factory(&env)?;
         let factory_client = FactoryClient::new(&env, &factory);
 
         let pair_address = factory_client
@@ -313,7 +313,7 @@ impl AstroSwapRouter {
             return Err(AstroSwapError::InvalidPath);
         }
 
-        let factory = get_factory(env);
+        let factory = get_factory(env)?;
         let factory_client = FactoryClient::new(env, &factory);
 
         let mut amounts = Vec::new(env);
@@ -359,7 +359,7 @@ impl AstroSwapRouter {
             return Err(AstroSwapError::InvalidPath);
         }
 
-        let factory = get_factory(env);
+        let factory = get_factory(env)?;
         let factory_client = FactoryClient::new(env, &factory);
 
         let path_len = path.len();
@@ -415,13 +415,15 @@ impl AstroSwapRouter {
     }
 
     /// Get factory address
-    pub fn factory(env: Env) -> Address {
+    /// Returns error if contract is not initialized
+    pub fn factory(env: Env) -> Result<Address, AstroSwapError> {
         extend_instance_ttl(&env);
         get_factory(&env)
     }
 
     /// Get admin address
-    pub fn admin(env: Env) -> Address {
+    /// Returns error if contract is not initialized
+    pub fn admin(env: Env) -> Result<Address, AstroSwapError> {
         extend_instance_ttl(&env);
         get_admin(&env)
     }
@@ -440,6 +442,10 @@ impl AstroSwapRouter {
     /// - Must have at least 2 tokens
     /// - Must not exceed maximum length
     /// - Must not contain duplicate tokens
+    ///
+    /// # Optimization
+    /// Caches tokens in a local array to avoid repeated path.get() calls.
+    /// For MAX_PATH_LENGTH=5, worst case is 10 comparisons which is acceptable.
     fn validate_path(path: &Vec<Address>) -> Result<(), AstroSwapError> {
         let len = path.len();
 
@@ -453,19 +459,21 @@ impl AstroSwapRouter {
             return Err(AstroSwapError::InvalidPath);
         }
 
-        // Check for duplicate tokens in path (would indicate a loop)
-        // Use safe indexing with early return on None (shouldn't happen given len checks)
+        // Cache tokens to avoid repeated path.get() calls
+        // This reduces storage reads from O(n²) to O(n)
+        let mut cached_tokens: [Option<Address>; 5] = [None, None, None, None, None];
         for i in 0..len {
-            let token_i = match path.get(i) {
-                Some(t) => t,
-                None => return Err(AstroSwapError::InvalidPath),
-            };
+            cached_tokens[i as usize] = path.get(i);
+            if cached_tokens[i as usize].is_none() {
+                return Err(AstroSwapError::InvalidPath);
+            }
+        }
+
+        // Check for duplicate tokens using cached values
+        // O(n²) comparisons but O(n) storage reads
+        for i in 0..len {
             for j in (i + 1)..len {
-                let token_j = match path.get(j) {
-                    Some(t) => t,
-                    None => return Err(AstroSwapError::InvalidPath),
-                };
-                if token_i == token_j {
+                if cached_tokens[i as usize] == cached_tokens[j as usize] {
                     return Err(AstroSwapError::InvalidPath);
                 }
             }
@@ -540,7 +548,20 @@ mod tests {
 
         client.initialize(&factory, &admin);
 
+        // View functions now return Result, the client auto-unwraps
         assert_eq!(client.factory(), factory);
         assert_eq!(client.admin(), admin);
+    }
+
+    #[test]
+    fn test_uninitialized_contract_returns_error() {
+        let env = Env::default();
+
+        let contract_id = env.register(AstroSwapRouter, ());
+        let client = AstroSwapRouterClient::new(&env, &contract_id);
+
+        // View functions should return NotInitialized error
+        assert!(client.try_factory().is_err());
+        assert!(client.try_admin().is_err());
     }
 }

@@ -1,7 +1,7 @@
-use soroban_sdk::{Address, Env, Vec};
+use soroban_sdk::{Address, Env};
 
 use crate::error::OracleError;
-use crate::storage::{DataKey, Observation, MAX_OBSERVATIONS};
+use crate::storage::{DataKey, Observation};
 
 /// Maximum TWAP window in seconds (24 hours)
 pub const MAX_TWAP_WINDOW: u64 = 86400;
@@ -10,39 +10,44 @@ pub const MAX_TWAP_WINDOW: u64 = 86400;
 pub const MIN_TWAP_WINDOW: u64 = 300;
 
 /// Add a new price observation for TWAP calculation
+///
+/// Uses the efficient circular buffer pattern that:
+/// - Writes only to a single storage slot (O(1) instead of O(n))
+/// - Uses binary search for finding observations (O(log n))
+/// - Stores metadata separately for quick bounds checking
 pub fn add_observation(env: &Env, token: &Address, price: i128) -> Result<(), OracleError> {
     let current_time = env.ledger().timestamp();
 
-    // Get existing observations or create new vector
-    let mut observations: Vec<Observation> = env
-        .storage()
-        .persistent()
-        .get(&DataKey::Observations(token.clone()))
-        .unwrap_or(Vec::new(env));
+    // Get the last observation to calculate cumulative price
+    let cumulative_price = if let Some(meta) = DataKey::get_buffer_meta(env, token) {
+        if meta.count > 0 {
+            // Find the most recent observation
+            let last_index = if meta.write_index == 0 {
+                meta.count - 1
+            } else {
+                meta.write_index - 1
+            };
 
-    // Get last observation index
-    let last_index: u32 = env
-        .storage()
-        .persistent()
-        .get(&DataKey::LastObservationIndex(token.clone()))
-        .unwrap_or(0);
+            if let Some(last_obs) = DataKey::get_observation_at(env, token, last_index) {
+                let time_elapsed = current_time.saturating_sub(last_obs.timestamp);
 
-    // Calculate cumulative price
-    let cumulative_price = if observations.is_empty() {
-        price
-    } else {
-        let last_obs = observations.get(last_index).unwrap();
-        let time_elapsed = current_time.saturating_sub(last_obs.timestamp);
-
-        // Prevent overflow: cumulative_price + (price * time_elapsed)
-        last_obs
-            .cumulative_price
-            .checked_add(
-                price
-                    .checked_mul(i128::from(time_elapsed))
+                // Prevent overflow: cumulative_price + (price * time_elapsed)
+                last_obs
+                    .cumulative_price
+                    .checked_add(
+                        price
+                            .checked_mul(i128::from(time_elapsed))
+                            .ok_or(OracleError::Overflow)?,
+                    )
                     .ok_or(OracleError::Overflow)?
-            )
-            .ok_or(OracleError::Overflow)?
+            } else {
+                price
+            }
+        } else {
+            price
+        }
+    } else {
+        price
     };
 
     let new_observation = Observation {
@@ -51,31 +56,15 @@ pub fn add_observation(env: &Env, token: &Address, price: i128) -> Result<(), Or
         price,
     };
 
-    // Add observation (circular buffer)
-    if observations.len() < MAX_OBSERVATIONS {
-        observations.push_back(new_observation);
-        let new_index = observations.len() - 1;
-        env.storage()
-            .persistent()
-            .set(&DataKey::LastObservationIndex(token.clone()), &new_index);
-    } else {
-        // Overwrite oldest observation
-        let next_index = (last_index + 1) % MAX_OBSERVATIONS;
-        observations.set(next_index, new_observation);
-        env.storage()
-            .persistent()
-            .set(&DataKey::LastObservationIndex(token.clone()), &next_index);
-    }
-
-    // Save observations
-    env.storage()
-        .persistent()
-        .set(&DataKey::Observations(token.clone()), &observations);
+    // Use efficient circular buffer (O(1) single storage write)
+    DataKey::add_observation_efficient(env, token, &new_observation)?;
 
     Ok(())
 }
 
 /// Calculate Time-Weighted Average Price (TWAP) for a given window
+///
+/// Uses efficient binary search O(log n) instead of linear scan O(n)
 pub fn calculate_twap(env: &Env, token: &Address, window: u64) -> Result<i128, OracleError> {
     // Validate window
     if window < MIN_TWAP_WINDOW {
@@ -85,21 +74,11 @@ pub fn calculate_twap(env: &Env, token: &Address, window: u64) -> Result<i128, O
         return Err(OracleError::WindowTooLarge);
     }
 
-    let observations: Vec<Observation> = env
-        .storage()
-        .persistent()
-        .get(&DataKey::Observations(token.clone()))
-        .ok_or(OracleError::InsufficientObservations)?;
-
-    if observations.is_empty() {
-        return Err(OracleError::InsufficientObservations);
-    }
-
     let current_time = env.ledger().timestamp();
     let window_start = current_time.saturating_sub(window);
 
-    // Find the two observations that bracket the window
-    let (start_obs, end_obs) = find_bracketing_observations(&observations, window_start, current_time)?;
+    // Use efficient binary search to find bracketing observations
+    let (start_obs, end_obs) = find_bracketing_observations_efficient(env, token, window_start)?;
 
     // Calculate TWAP: (cumulative_price_end - cumulative_price_start) / time_elapsed
     let cumulative_diff = end_obs
@@ -120,102 +99,65 @@ pub fn calculate_twap(env: &Env, token: &Address, window: u64) -> Result<i128, O
     Ok(twap)
 }
 
-/// Find observations that bracket the given time window
-fn find_bracketing_observations(
-    observations: &Vec<Observation>,
+/// Find bracketing observations using efficient binary search
+///
+/// Returns (start_obs, end_obs) where:
+/// - start_obs is at or before window_start
+/// - end_obs is the most recent observation
+fn find_bracketing_observations_efficient(
+    env: &Env,
+    token: &Address,
     window_start: u64,
-    window_end: u64,
 ) -> Result<(Observation, Observation), OracleError> {
-    let len = observations.len();
+    // Get buffer metadata for quick validation
+    let meta = DataKey::get_buffer_meta(env, token)
+        .ok_or(OracleError::InsufficientObservations)?;
 
-    if len < 2 {
+    if meta.count < 2 {
         return Err(OracleError::InsufficientObservations);
     }
 
-    // Get the most recent observation
-    let mut end_obs = observations.get(len - 1).unwrap();
-
-    // If the most recent observation is before window_end, use it
-    if end_obs.timestamp < window_end {
-        // Find the observation closest to window_start
-        let mut start_obs = observations.get(0).unwrap();
-
-        for i in 0..len {
-            let obs = observations.get(i).unwrap();
-            if obs.timestamp >= window_start {
-                if i > 0 {
-                    start_obs = observations.get(i - 1).unwrap();
-                } else {
-                    start_obs = obs;
-                }
-                break;
-            }
-            start_obs = obs;
-        }
-
-        // Check if start observation is too old
-        if start_obs.timestamp < window_start.saturating_sub(MAX_TWAP_WINDOW) {
-            return Err(OracleError::ObservationTooOld);
-        }
-
-        return Ok((start_obs, end_obs));
+    // Check if oldest observation is recent enough
+    if meta.oldest_timestamp > window_start {
+        return Err(OracleError::ObservationTooOld);
     }
 
-    // If we need to find an observation at window_end
-    let mut found_end = false;
-    for i in (0..len).rev() {
-        let obs = observations.get(i).unwrap();
-        if obs.timestamp <= window_end {
-            end_obs = obs;
-            found_end = true;
-            break;
-        }
-    }
+    // Get the most recent observation (end_obs)
+    let newest_index = if meta.write_index == 0 {
+        meta.count - 1
+    } else {
+        meta.write_index - 1
+    };
 
-    if !found_end {
-        return Err(OracleError::InsufficientObservations);
-    }
+    let end_obs = DataKey::get_observation_at(env, token, newest_index)
+        .ok_or(OracleError::InvalidObservationIndex)?;
 
-    // Find start observation
-    let mut start_obs = observations.get(0).unwrap();
-    for i in 0..len {
-        let obs = observations.get(i).unwrap();
-        if obs.timestamp >= window_start {
-            if i > 0 {
-                start_obs = observations.get(i - 1).unwrap();
-            } else {
-                start_obs = obs;
-            }
-            break;
-        }
-        start_obs = obs;
-    }
+    // Binary search for observation at or before window_start
+    let (_, start_obs) = DataKey::find_observation_at_or_before(env, token, window_start)
+        .ok_or(OracleError::InsufficientObservations)?;
 
     Ok((start_obs, end_obs))
 }
 
-/// Get the latest price observation
+/// Get the latest price observation using efficient circular buffer
 #[allow(dead_code)]
 pub fn get_latest_observation(env: &Env, token: &Address) -> Result<Observation, OracleError> {
-    let observations: Vec<Observation> = env
-        .storage()
-        .persistent()
-        .get(&DataKey::Observations(token.clone()))
+    let meta = DataKey::get_buffer_meta(env, token)
         .ok_or(OracleError::InsufficientObservations)?;
 
-    if observations.is_empty() {
+    if meta.count == 0 {
         return Err(OracleError::InsufficientObservations);
     }
 
-    let last_index: u32 = env
-        .storage()
-        .persistent()
-        .get(&DataKey::LastObservationIndex(token.clone()))
-        .unwrap_or(observations.len() - 1);
+    // Get the most recent observation
+    let newest_index = if meta.write_index == 0 {
+        meta.count - 1
+    } else {
+        meta.write_index - 1
+    };
 
-    observations
-        .get(last_index)
-        .ok_or(OracleError::InsufficientObservations)
+    DataKey::get_observation_at(env, token, newest_index)
+        .ok_or(OracleError::InvalidObservationIndex)
 }
 
 // TWAP tests are covered through contract integration tests

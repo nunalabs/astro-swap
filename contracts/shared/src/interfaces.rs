@@ -132,6 +132,7 @@ impl<'a> PairClient<'a> {
         token_in: &Address,
         amount_in: i128,
         min_out: i128,
+        deadline: u64,
     ) -> Result<i128, AstroSwapError> {
         let result: i128 = self.env.invoke_contract(
             &self.contract_id,
@@ -143,6 +144,7 @@ impl<'a> PairClient<'a> {
                     token_in.to_val(),
                     amount_in.into_val(self.env),
                     min_out.into_val(self.env),
+                    deadline.into_val(self.env),
                 ],
             ),
         );

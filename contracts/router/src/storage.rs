@@ -1,3 +1,4 @@
+use astroswap_shared::AstroSwapError;
 use soroban_sdk::{contracttype, Address, Env};
 
 /// Storage keys for the router contract
@@ -23,11 +24,12 @@ pub fn set_initialized(env: &Env) {
 }
 
 /// Get the factory address
-pub fn get_factory(env: &Env) -> Address {
+/// Returns error if factory is not set (contract not initialized)
+pub fn get_factory(env: &Env) -> Result<Address, AstroSwapError> {
     env.storage()
         .instance()
         .get::<DataKey, Address>(&DataKey::Factory)
-        .expect("Factory not set")
+        .ok_or(AstroSwapError::NotInitialized)
 }
 
 /// Set the factory address
@@ -36,11 +38,12 @@ pub fn set_factory(env: &Env, factory: &Address) {
 }
 
 /// Get the admin address
-pub fn get_admin(env: &Env) -> Address {
+/// Returns error if admin is not set (contract not initialized)
+pub fn get_admin(env: &Env) -> Result<Address, AstroSwapError> {
     env.storage()
         .instance()
         .get::<DataKey, Address>(&DataKey::Admin)
-        .expect("Admin not set")
+        .ok_or(AstroSwapError::NotInitialized)
 }
 
 /// Set the admin address

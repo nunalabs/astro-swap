@@ -56,6 +56,8 @@ pub enum AstroSwapError {
     TimelockNotExpired = 502,
     InvalidAdmin = 503,
     ContractPaused = 504,
+    ContractNotPaused = 505,
+    UnpauseNotScheduled = 506,
 
     // Aggregator errors (600-699)
     ProtocolNotFound = 600,
@@ -95,10 +97,12 @@ impl From<SharedError> for AstroSwapError {
             SharedError::InvalidPercentage => AstroSwapError::InvalidArgument,
             // State errors (300-399)
             SharedError::ContractPaused => AstroSwapError::ContractPaused,
-            SharedError::ContractNotPaused => AstroSwapError::InvalidArgument,
+            SharedError::ContractNotPaused => AstroSwapError::ContractNotPaused,
             SharedError::InvalidState => AstroSwapError::InvalidArgument,
             SharedError::AlreadyExecuted => AstroSwapError::InvalidArgument,
             SharedError::DeadlineExpired => AstroSwapError::DeadlineExpired,
+            SharedError::Reentrancy => AstroSwapError::Reentrancy,
+            SharedError::CircuitBreakerTriggered => AstroSwapError::ContractPaused,
             // Token/balance errors (400-499)
             SharedError::InsufficientBalance => AstroSwapError::InsufficientBalance,
             SharedError::TokenNotFound => AstroSwapError::InvalidToken,

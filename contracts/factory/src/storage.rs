@@ -1,4 +1,4 @@
-use astroswap_shared::TokenMetadata;
+use astroswap_shared::{AstroSwapError, TokenMetadata};
 use soroban_sdk::{contracttype, Address, BytesN, Env};
 
 /// Storage keys for the factory contract
@@ -35,11 +35,12 @@ pub fn set_initialized(env: &Env) {
 }
 
 /// Get the admin address
-pub fn get_admin(env: &Env) -> Address {
+/// Returns error if admin is not set (contract not initialized)
+pub fn get_admin(env: &Env) -> Result<Address, AstroSwapError> {
     env.storage()
         .instance()
         .get::<DataKey, Address>(&DataKey::Admin)
-        .expect("Admin not set")
+        .ok_or(AstroSwapError::NotInitialized)
 }
 
 /// Set the admin address
@@ -77,11 +78,12 @@ pub fn set_protocol_fee_bps(env: &Env, fee_bps: u32) {
 }
 
 /// Get the pair contract WASM hash
-pub fn get_pair_wasm_hash(env: &Env) -> BytesN<32> {
+/// Returns error if WASM hash is not set (contract not initialized)
+pub fn get_pair_wasm_hash(env: &Env) -> Result<BytesN<32>, AstroSwapError> {
     env.storage()
         .instance()
         .get::<DataKey, BytesN<32>>(&DataKey::PairWasmHash)
-        .expect("Pair WASM hash not set")
+        .ok_or(AstroSwapError::NotInitialized)
 }
 
 /// Set the pair contract WASM hash

@@ -115,9 +115,15 @@ impl SwapLoadScenario {
     ) {
         let timer = collector.start_operation();
         let pair_client = PairClient::new(env, pair_address);
+        let deadline = env.ledger().timestamp() + 3600; // 1 hour from now
 
-        match pair_client.swap(user, token_in, amount_in, min_out) {
-            Ok(amount_out) => {
+        // Catch panics from contract errors (e.g., insufficient balance)
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            pair_client.swap(user, token_in, amount_in, min_out, deadline)
+        }));
+
+        match result {
+            Ok(Ok(amount_out)) => {
                 let mut metadata = HashMap::new();
                 metadata.insert("amount_in".to_string(), amount_in.to_string());
                 metadata.insert("amount_out".to_string(), amount_out.to_string());
@@ -127,10 +133,17 @@ impl SwapLoadScenario {
                 );
                 timer.success(OperationType::Swap, metadata);
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 timer.error(
                     OperationType::Swap,
                     format!("Swap failed: {:?}", e),
+                    HashMap::new(),
+                );
+            }
+            Err(_) => {
+                timer.error(
+                    OperationType::Swap,
+                    "Swap panicked (contract error)".to_string(),
                     HashMap::new(),
                 );
             }

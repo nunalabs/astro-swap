@@ -137,17 +137,25 @@ pub fn get_amounts_out(amount_in: i128, path: Vec<Address>) -> Vec<i128>
 - **LP Fee**: 0.25% → stays in pool (increases k)
 - **Protocol Fee**: 0.05% → treasury
 
-## Shared Code (MIGRATION NEEDED)
+## Shared Code (INTEGRATED ✅)
 
-**Current State**: Uses local `contracts/shared/` with duplicate math.
-
-**Target State**: Use `astro-core-shared` as single source of truth.
+**Status**: Properly integrated with `astro-core-shared` v1.2.0
 
 ```toml
-# Cargo.toml (after migration)
-[dependencies]
+# Cargo.toml - workspace dependency
+[workspace.dependencies]
 astro-core-shared = { git = "https://github.com/nunalabs/astro-core", tag = "v1.2.0" }
 ```
+
+**Architecture**:
+- `astro-core-shared` → Core math, types, error definitions (canonical source)
+- `astroswap-shared` → DEX-specific wrappers + error conversion + DEX types
+
+**Local Modules** (DEX-specific, not in astro-core):
+- `reentrancy.rs` - RAII-based reentrancy guard
+- `multisig.rs` - Governance with threshold approvals
+- `ttl.rs` - Lazy TTL refresh pattern
+- `interfaces.rs` - Contract client types
 
 ## Integration with astro-launchpad
 

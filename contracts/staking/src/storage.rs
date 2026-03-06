@@ -1,4 +1,4 @@
-use astroswap_shared::{StakingPool, UserStake};
+use astroswap_shared::{AstroSwapError, StakingPool, UserStake};
 use soroban_sdk::{contracttype, Address, Env};
 
 /// Storage keys for the staking contract
@@ -33,11 +33,11 @@ pub fn set_initialized(env: &Env) {
 }
 
 /// Get the admin address
-pub fn get_admin(env: &Env) -> Address {
+pub fn get_admin(env: &Env) -> Result<Address, AstroSwapError> {
     env.storage()
         .instance()
         .get::<DataKey, Address>(&DataKey::Admin)
-        .expect("Admin not set")
+        .ok_or(AstroSwapError::NotInitialized)
 }
 
 /// Set the admin address

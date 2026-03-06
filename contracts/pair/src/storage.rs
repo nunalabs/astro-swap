@@ -1,3 +1,4 @@
+use astroswap_shared::AstroSwapError;
 use soroban_sdk::{contracttype, Address, Env};
 
 /// Storage keys for the pair contract
@@ -66,11 +67,12 @@ pub fn set_initialized(env: &Env) {
 }
 
 /// Get the factory address
-pub fn get_factory(env: &Env) -> Address {
+/// Returns error if factory is not set (contract not initialized)
+pub fn get_factory(env: &Env) -> Result<Address, AstroSwapError> {
     env.storage()
         .instance()
         .get::<DataKey, Address>(&DataKey::Factory)
-        .expect("Factory not set")
+        .ok_or(AstroSwapError::NotInitialized)
 }
 
 /// Set the factory address
@@ -79,11 +81,12 @@ pub fn set_factory(env: &Env, factory: &Address) {
 }
 
 /// Get token 0 address
-pub fn get_token_0(env: &Env) -> Address {
+/// Returns error if token0 is not set (contract not initialized)
+pub fn get_token_0(env: &Env) -> Result<Address, AstroSwapError> {
     env.storage()
         .instance()
         .get::<DataKey, Address>(&DataKey::Token0)
-        .expect("Token0 not set")
+        .ok_or(AstroSwapError::NotInitialized)
 }
 
 /// Set token 0 address
@@ -92,11 +95,12 @@ pub fn set_token_0(env: &Env, token: &Address) {
 }
 
 /// Get token 1 address
-pub fn get_token_1(env: &Env) -> Address {
+/// Returns error if token1 is not set (contract not initialized)
+pub fn get_token_1(env: &Env) -> Result<Address, AstroSwapError> {
     env.storage()
         .instance()
         .get::<DataKey, Address>(&DataKey::Token1)
-        .expect("Token1 not set")
+        .ok_or(AstroSwapError::NotInitialized)
 }
 
 /// Set token 1 address
