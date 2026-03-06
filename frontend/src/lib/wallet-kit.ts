@@ -11,6 +11,30 @@ import {
 
 // Network configuration
 const NETWORK = import.meta.env.VITE_STELLAR_NETWORK || 'testnet';
+const NETWORK_PASSPHRASE = NETWORK === 'mainnet'
+  ? 'Public Global Stellar Network ; September 2015'
+  : 'Test SDF Network ; September 2015';
+
+// Timing configuration (inspired by Albedo patterns)
+const SIGNING_TIMEOUT_MS = 30_000; // 30 seconds for user to sign
+const TRANSACTION_TIME_BOUNDS_SECONDS = 300; // 5 minutes validity
+
+// Error types for better UX
+export type WalletErrorType = 'cancelled' | 'timeout' | 'network' | 'validation' | 'unknown';
+
+export class WalletError extends Error {
+  type: WalletErrorType;
+  recoverable: boolean;
+  userMessage: string;
+
+  constructor(type: WalletErrorType, message: string, userMessage: string, recoverable = true) {
+    super(message);
+    this.type = type;
+    this.recoverable = recoverable;
+    this.userMessage = userMessage;
+    this.name = 'WalletError';
+  }
+}
 
 // Initialize the wallet kit with all supported modules
 export const walletKit = new StellarWalletsKit({
@@ -99,16 +123,85 @@ export async function getWalletAddress(): Promise<string> {
 }
 
 /**
- * Sign a transaction with the connected wallet
+ * Helper: Create timeout promise
  */
-export async function signTransaction(xdr: string): Promise<string> {
-  const { signedTxXdr } = await walletKit.signTransaction(xdr, {
-    networkPassphrase: NETWORK === 'mainnet'
-      ? 'Public Global Stellar Network ; September 2015'
-      : 'Test SDF Network ; September 2015',
-    address: await getWalletAddress(),
+function timeoutPromise<T>(ms: number, message: string): Promise<T> {
+  return new Promise((_, reject) => {
+    setTimeout(() => {
+      reject(new WalletError(
+        'timeout',
+        message,
+        'Signature request timed out. Please try again.',
+        true
+      ));
+    }, ms);
   });
-  return signedTxXdr;
+}
+
+/**
+ * Sign a transaction with the connected wallet
+ * Features:
+ * - Timeout protection (30s default)
+ * - User-friendly error messages
+ * - Cancellation detection
+ */
+export async function signTransaction(
+  xdr: string,
+  options?: {
+    description?: string;
+    timeout?: number;
+  }
+): Promise<string> {
+  const timeout = options?.timeout ?? SIGNING_TIMEOUT_MS;
+  const address = await getWalletAddress();
+
+  try {
+    // Race between signing and timeout
+    const { signedTxXdr } = await Promise.race([
+      walletKit.signTransaction(xdr, {
+        networkPassphrase: NETWORK_PASSPHRASE,
+        address,
+      }),
+      timeoutPromise<{ signedTxXdr: string }>(timeout, 'Transaction signing timed out'),
+    ]);
+
+    return signedTxXdr;
+  } catch (error) {
+    // Handle specific error types
+    if (error instanceof WalletError) {
+      throw error;
+    }
+
+    const message = error instanceof Error ? error.message.toLowerCase() : '';
+
+    // User cancelled
+    if (message.includes('cancel') || message.includes('rejected') || message.includes('denied')) {
+      throw new WalletError(
+        'cancelled',
+        'User cancelled the transaction',
+        'Transaction cancelled.',
+        false
+      );
+    }
+
+    // Network errors
+    if (message.includes('network') || message.includes('connection')) {
+      throw new WalletError(
+        'network',
+        `Network error: ${message}`,
+        'Network error. Please check your connection and try again.',
+        true
+      );
+    }
+
+    // Unknown errors
+    throw new WalletError(
+      'unknown',
+      error instanceof Error ? error.message : 'Unknown error',
+      'An unexpected error occurred. Please try again.',
+      true
+    );
+  }
 }
 
 /**
@@ -152,5 +245,69 @@ export function disconnectWallet(): void {
   // The kit doesn't have a built-in disconnect, we just clear state
   // The wallet store will handle clearing local state
 }
+
+/**
+ * Submit a signed transaction with retry logic
+ * Implements exponential backoff with jitter (Albedo pattern)
+ */
+export async function submitWithRetry(
+  submitFn: () => Promise<unknown>,
+  maxRetries = 3
+): Promise<unknown> {
+  let lastError: Error | undefined;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await submitFn();
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      // Don't retry on user errors or validation errors
+      const message = lastError.message.toLowerCase();
+      if (message.includes('invalid') || message.includes('malformed')) {
+        throw new WalletError(
+          'validation',
+          lastError.message,
+          'Transaction validation failed. Please check your inputs.',
+          false
+        );
+      }
+
+      // Last attempt - throw the error
+      if (attempt === maxRetries) {
+        throw new WalletError(
+          'network',
+          lastError.message,
+          'Transaction submission failed after multiple attempts. Please try again later.',
+          true
+        );
+      }
+
+      // Exponential backoff with jitter
+      const delay = Math.min(
+        1000 * Math.pow(2, attempt - 1) + Math.random() * 1000,
+        10_000
+      );
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError;
+}
+
+/**
+ * Get recommended transaction time bounds
+ * Based on Albedo's pattern for network resilience
+ */
+export function getTransactionTimeBounds(): { minTime: number; maxTime: number } {
+  const now = Math.floor(Date.now() / 1000);
+  return {
+    minTime: now,
+    maxTime: now + TRANSACTION_TIME_BOUNDS_SECONDS,
+  };
+}
+
+// Export network configuration for use elsewhere
+export { NETWORK, NETWORK_PASSPHRASE };
 
 export type { ISupportedWallet };
