@@ -13,7 +13,19 @@ pub struct AstroSwapOracle;
 
 #[contractimpl]
 impl AstroSwapOracle {
-    /// Initialize the oracle contract
+    /// Constructor - atomic initialization (CAP-58)
+    pub fn __constructor(env: Env, admin: Address, staleness_threshold: u64) {
+        // Validate staleness threshold
+        if staleness_threshold == 0 || staleness_threshold > MAX_STALENESS_THRESHOLD {
+            panic!("invalid staleness threshold");
+        }
+
+        DataKey::set_admin(&env, &admin);
+        DataKey::set_staleness_threshold(&env, staleness_threshold);
+        DataKey::set_initialized(&env);
+    }
+
+    /// Initialize the oracle contract (legacy - for backwards compatibility)
     ///
     /// # Arguments
     /// * `admin` - Admin address that can update prices and settings

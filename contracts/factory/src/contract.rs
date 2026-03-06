@@ -14,8 +14,30 @@ pub struct AstroSwapFactory;
 
 #[contractimpl]
 impl AstroSwapFactory {
-    /// Initialize the factory contract
-    /// Can only be called once
+    /// Constructor - atomic initialization, cannot be front-run (CAP-58)
+    /// Called automatically when contract is deployed
+    pub fn __constructor(
+        env: Env,
+        admin: Address,
+        pair_wasm_hash: BytesN<32>,
+        protocol_fee_bps: u32,
+    ) {
+        // Validate fee (max 1% = 100 bps)
+        if protocol_fee_bps > 100 {
+            panic!("fee too high");
+        }
+
+        set_admin(&env, &admin);
+        set_pair_wasm_hash(&env, &pair_wasm_hash);
+        set_protocol_fee_bps(&env, protocol_fee_bps);
+        set_initialized(&env);
+
+        extend_instance_ttl(&env);
+    }
+
+    /// Legacy initialize for backwards compatibility with existing deployments
+    /// New deployments should use constructor
+    #[allow(dead_code)]
     pub fn initialize(
         env: Env,
         admin: Address,

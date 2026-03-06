@@ -20,7 +20,15 @@ pub struct AstroSwapStaking;
 
 #[contractimpl]
 impl AstroSwapStaking {
-    /// Initialize the staking contract
+    /// Constructor - atomic initialization (CAP-58)
+    pub fn __constructor(env: Env, admin: Address, reward_token: Address) {
+        set_admin(&env, &admin);
+        set_reward_token(&env, &reward_token);
+        set_initialized(&env);
+        extend_instance_ttl(&env);
+    }
+
+    /// Legacy initialize for backwards compatibility
     pub fn initialize(
         env: Env,
         admin: Address,

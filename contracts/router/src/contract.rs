@@ -15,7 +15,15 @@ pub struct AstroSwapRouter;
 
 #[contractimpl]
 impl AstroSwapRouter {
-    /// Initialize the router contract
+    /// Constructor - atomic initialization (CAP-58)
+    pub fn __constructor(env: Env, factory: Address, admin: Address) {
+        set_factory(&env, &factory);
+        set_admin(&env, &admin);
+        set_initialized(&env);
+        extend_instance_ttl(&env);
+    }
+
+    /// Legacy initialize for backwards compatibility
     pub fn initialize(env: Env, factory: Address, admin: Address) -> Result<(), AstroSwapError> {
         if is_initialized(&env) {
             return Err(AstroSwapError::AlreadyInitialized);

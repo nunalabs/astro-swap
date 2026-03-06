@@ -19,8 +19,26 @@ pub struct AstroSwapPair;
 
 #[contractimpl]
 impl AstroSwapPair {
-    /// Initialize the pair contract
-    /// Called by the factory after deployment
+    /// Constructor - atomic initialization with deployment (CAP-58)
+    /// Called automatically when contract is deployed via deploy_v2
+    pub fn __constructor(env: Env, factory: Address, token_0: Address, token_1: Address) {
+        // Tokens must be different
+        if token_0 == token_1 {
+            panic!("same token");
+        }
+
+        set_factory(&env, &factory);
+        set_token_0(&env, &token_0);
+        set_token_1(&env, &token_1);
+        set_fee_bps(&env, DEFAULT_SWAP_FEE_BPS);
+        set_initialized(&env);
+        set_locked(&env, false);
+
+        extend_instance_ttl(&env);
+    }
+
+    /// Legacy initialize for backwards compatibility with existing deployments
+    /// New deployments should use constructor via deploy_v2
     pub fn initialize(
         env: Env,
         factory: Address,
