@@ -28,6 +28,7 @@ const searchCache = new Map<string, { results: Token[]; timestamp: number }>();
 interface WhitelistToken {
   code: string;
   issuer: string;
+  contractId?: string;  // SAC contract address (preferred over code:issuer)
   name: string;
   symbol: string;
   decimals: number;
@@ -51,8 +52,13 @@ export function getWhitelistTokens(): Token[] {
     // Skip mainnet tokens on testnet (unless they're available on both)
     if (isTestnet && !wt.testnet && wt.issuer !== 'native') continue;
 
+    // Use contractId if available (SAC address), otherwise create composite
+    const address = wt.issuer === 'native'
+      ? 'native'
+      : wt.contractId || createSACAddress(wt.code, wt.issuer);
+
     tokens.push({
-      address: wt.issuer === 'native' ? 'native' : createSACAddress(wt.code, wt.issuer),
+      address,
       symbol: wt.symbol,
       name: wt.name,
       decimals: wt.decimals,
