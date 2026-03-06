@@ -4,7 +4,7 @@ import { useWalletStore } from '../stores/walletStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useTransactionStore } from '../stores/transactionStore';
 import { getAmountsOut, swapExactTokensForTokens, calculateOptimalPath } from '../lib/contracts';
-import { calculatePriceImpact, calculateMinimumReceived, debounce } from '../lib/utils';
+import { calculatePriceImpact, parseTokenAmount, formatTokenAmount } from '../lib/utils';
 import { formatErrorForToast } from '../lib/errors';
 import { useSwapSimulation } from './useSimulation';
 import type { Token } from '../types';
@@ -38,22 +38,29 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
     queryFn: async () => {
       if (!tokenIn || !tokenOut || !amountIn || !address) return null;
 
+      // Convert human-readable input to raw units
+      const rawAmountIn = parseTokenAmount(amountIn, tokenIn.decimals);
+
       // Calculate optimal path
       const path = calculateOptimalPath(tokenIn, tokenOut, []); // Pass actual pools
       const pathAddresses = path.map((t) => t.address);
 
-      // Get amounts out
-      const amounts = await getAmountsOut(amountIn, pathAddresses, address);
+      // Get amounts out using raw units
+      const amounts = await getAmountsOut(rawAmountIn, pathAddresses, address);
 
       if (!amounts || amounts.length === 0) return null;
 
-      const outputAmount = amounts[amounts.length - 1];
+      // Output is in raw units, convert back to human-readable for display
+      const rawOutputAmount = amounts[amounts.length - 1];
+      const outputAmount = formatTokenAmount(rawOutputAmount, tokenOut.decimals, 7);
 
       // Calculate price impact (simplified)
-      const impact = calculatePriceImpact('1000000', '1000000', amountIn);
+      const impact = calculatePriceImpact('1000000', '1000000', rawAmountIn);
 
       return {
         amountOut: outputAmount,
+        rawAmountIn,
+        rawAmountOut: rawOutputAmount,
         priceImpact: impact,
         path: path,
       };
@@ -78,17 +85,31 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
   // Swap mutation
   const swapMutation = useMutation({
     mutationFn: async () => {
-      if (!tokenIn || !tokenOut || !walletAddress) {
+      if (!tokenIn || !tokenOut || !walletAddress || !quoteData) {
         throw new Error('Missing required parameters');
       }
 
       const pathAddresses = route.map((t) => t.address);
-      const minimumReceived = calculateMinimumReceived(amountOut, slippageTolerance);
+      // Use raw amounts for the swap, calculate minimum with slippage
+      const rawAmountIn = quoteData.rawAmountIn;
+      // Calculate slippage: multiply by (100 - slippage) / 100
+      // Use integer math: multiply by (10000 - slippage*100) / 10000
+      const slippageBps = Math.floor(slippageTolerance * 100);
+      const rawAmountOutMin = (
+        BigInt(quoteData.rawAmountOut) * BigInt(10000 - slippageBps) / 10000n
+      ).toString();
       const deadlineTimestamp = Math.floor(Date.now() / 1000) + deadline * 60;
 
+      console.log('Executing swap:', {
+        rawAmountIn,
+        rawAmountOutMin,
+        path: pathAddresses,
+        deadline: deadlineTimestamp,
+      });
+
       return swapExactTokensForTokens(
-        amountIn,
-        minimumReceived,
+        rawAmountIn,
+        rawAmountOutMin,
         pathAddresses,
         walletAddress,
         deadlineTimestamp,
@@ -150,27 +171,31 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
     },
   });
 
-  // Debounced input handler
-  const handleAmountInChange = useCallback(
-    debounce((value: unknown) => {
-      setAmountIn(String(value));
-    }, 500),
-    []
-  );
+  // Direct input handler - no debounce needed, useQuery handles caching
+  const handleAmountInChange = useCallback((value: string) => {
+    setAmountIn(value);
+  }, []);
 
   // Pre-validate swap with simulation before confirming
   const validateSwap = useCallback(async (): Promise<boolean> => {
-    if (!tokenIn || !tokenOut || !amountIn || !amountOut || !walletAddress) {
+    if (!tokenIn || !tokenOut || !amountIn || !amountOut || !walletAddress || !quoteData) {
       return false;
     }
 
     const pathAddresses = route.map((t) => t.address);
-    const minimumReceived = calculateMinimumReceived(amountOut, slippageTolerance);
+    // Use raw amounts for validation
+    const rawAmountIn = quoteData.rawAmountIn;
+    // Calculate slippage: multiply by (100 - slippage) / 100
+    // Use integer math: multiply by (10000 - slippage*100) / 10000
+    const slippageBps = Math.floor(slippageTolerance * 100);
+    const rawAmountOutMin = (
+      BigInt(quoteData.rawAmountOut) * BigInt(10000 - slippageBps) / 10000n
+    ).toString();
     const deadlineTimestamp = Math.floor(Date.now() / 1000) + deadline * 60;
 
     const result = await simulateSwap({
-      amountIn,
-      amountOutMin: minimumReceived,
+      amountIn: rawAmountIn,
+      amountOutMin: rawAmountOutMin,
       path: pathAddresses,
       to: walletAddress,
       deadline: deadlineTimestamp,
@@ -186,7 +211,7 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
     }
 
     return true;
-  }, [tokenIn, tokenOut, amountIn, amountOut, walletAddress, route, slippageTolerance, deadline, simulateSwap, addToast]);
+  }, [tokenIn, tokenOut, amountIn, amountOut, walletAddress, route, slippageTolerance, deadline, simulateSwap, addToast, quoteData]);
 
   const swap = useCallback(async () => {
     if (!tokenIn || !tokenOut || !amountIn || !amountOut) {

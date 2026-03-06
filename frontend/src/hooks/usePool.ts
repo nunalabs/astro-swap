@@ -10,6 +10,7 @@ import {
   removeLiquidity,
 } from '../lib/contracts';
 import { getPairTokens, fetchTokenMetadata } from '../lib/token-indexer';
+import { parseTokenAmount } from '../lib/utils';
 import type { Pool, Token } from '../types';
 
 export function usePool() {
@@ -118,17 +119,40 @@ export function usePool() {
     }) => {
       if (!address) throw new Error('Wallet not connected');
 
-      const amountAMin = (parseFloat(amountA) * (1 - slippage / 100)).toString();
-      const amountBMin = (parseFloat(amountB) * (1 - slippage / 100)).toString();
+      // Convert human-readable amounts to raw amounts (with decimals)
+      const rawAmountA = parseTokenAmount(amountA, tokenA.decimals);
+      const rawAmountB = parseTokenAmount(amountB, tokenB.decimals);
+
+      // Calculate minimum amounts with slippage protection
+      const slippageMultiplier = (100 - slippage) / 100;
+      const rawAmountAMin = parseTokenAmount(
+        (parseFloat(amountA) * slippageMultiplier).toString(),
+        tokenA.decimals
+      );
+      const rawAmountBMin = parseTokenAmount(
+        (parseFloat(amountB) * slippageMultiplier).toString(),
+        tokenB.decimals
+      );
+
       const deadlineTimestamp = Math.floor(Date.now() / 1000) + deadline * 60;
+
+      console.log('Adding liquidity:', {
+        tokenA: tokenA.address,
+        tokenB: tokenB.address,
+        rawAmountA,
+        rawAmountB,
+        rawAmountAMin,
+        rawAmountBMin,
+        deadline: deadlineTimestamp,
+      });
 
       return addLiquidity(
         tokenA.address,
         tokenB.address,
-        amountA,
-        amountB,
-        amountAMin,
-        amountBMin,
+        rawAmountA,
+        rawAmountB,
+        rawAmountAMin,
+        rawAmountBMin,
         address,
         deadlineTimestamp,
         address
@@ -168,15 +192,26 @@ export function usePool() {
     }) => {
       if (!address) throw new Error('Wallet not connected');
 
+      // LP tokens have 7 decimals (same as Stellar native)
+      const rawLiquidity = parseTokenAmount(liquidity, 7);
+
       // Calculate minimum amounts based on current reserves
-      const amountAMin = '0'; // Calculate based on reserves and slippage
-      const amountBMin = '0'; // Calculate based on reserves and slippage
+      // Setting to 0 means we accept any amount (user should be shown warnings)
+      const amountAMin = '0';
+      const amountBMin = '0';
       const deadlineTimestamp = Math.floor(Date.now() / 1000) + deadline * 60;
+
+      console.log('Removing liquidity:', {
+        tokenA: tokenA.address,
+        tokenB: tokenB.address,
+        rawLiquidity,
+        deadline: deadlineTimestamp,
+      });
 
       return removeLiquidity(
         tokenA.address,
         tokenB.address,
-        liquidity,
+        rawLiquidity,
         amountAMin,
         amountBMin,
         address,

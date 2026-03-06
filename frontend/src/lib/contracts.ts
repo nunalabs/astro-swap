@@ -195,11 +195,11 @@ export async function swapExactTokensForTokens(
   try {
     const contract = new StellarSdk.Contract(CONTRACTS.ROUTER);
 
-    const amountInScVal = StellarSdk.nativeToScVal(amountIn, { type: 'u128' });
-    const amountOutMinScVal = StellarSdk.nativeToScVal(amountOutMin, { type: 'u128' });
-    const pathScVal = StellarSdk.nativeToScVal(
-      path.map(addr => ({ type: 'address', value: addr })),
-      { type: 'vec' }
+    const amountInScVal = StellarSdk.nativeToScVal(amountIn, { type: 'i128' });
+    const amountOutMinScVal = StellarSdk.nativeToScVal(amountOutMin, { type: 'i128' });
+    // Create vector of addresses properly - each address must be encoded individually
+    const pathScVal = StellarSdk.xdr.ScVal.scvVec(
+      path.map(addr => StellarSdk.nativeToScVal(addr, { type: 'address' }))
     );
     const toScVal = StellarSdk.nativeToScVal(to, { type: 'address' });
     const deadlineScVal = StellarSdk.nativeToScVal(deadline, { type: 'u64' });
@@ -242,10 +242,10 @@ export async function addLiquidity(
       'add_liquidity',
       StellarSdk.nativeToScVal(tokenA, { type: 'address' }),
       StellarSdk.nativeToScVal(tokenB, { type: 'address' }),
-      StellarSdk.nativeToScVal(amountADesired, { type: 'u128' }),
-      StellarSdk.nativeToScVal(amountBDesired, { type: 'u128' }),
-      StellarSdk.nativeToScVal(amountAMin, { type: 'u128' }),
-      StellarSdk.nativeToScVal(amountBMin, { type: 'u128' }),
+      StellarSdk.nativeToScVal(amountADesired, { type: 'i128' }),
+      StellarSdk.nativeToScVal(amountBDesired, { type: 'i128' }),
+      StellarSdk.nativeToScVal(amountAMin, { type: 'i128' }),
+      StellarSdk.nativeToScVal(amountBMin, { type: 'i128' }),
       StellarSdk.nativeToScVal(to, { type: 'address' }),
       StellarSdk.nativeToScVal(deadline, { type: 'u64' })
     );
@@ -278,9 +278,9 @@ export async function removeLiquidity(
       'remove_liquidity',
       StellarSdk.nativeToScVal(tokenA, { type: 'address' }),
       StellarSdk.nativeToScVal(tokenB, { type: 'address' }),
-      StellarSdk.nativeToScVal(liquidity, { type: 'u128' }),
-      StellarSdk.nativeToScVal(amountAMin, { type: 'u128' }),
-      StellarSdk.nativeToScVal(amountBMin, { type: 'u128' }),
+      StellarSdk.nativeToScVal(liquidity, { type: 'i128' }),
+      StellarSdk.nativeToScVal(amountAMin, { type: 'i128' }),
+      StellarSdk.nativeToScVal(amountBMin, { type: 'i128' }),
       StellarSdk.nativeToScVal(to, { type: 'address' }),
       StellarSdk.nativeToScVal(deadline, { type: 'u64' })
     );
@@ -306,8 +306,8 @@ export async function stake(
 
     const operation = contract.call(
       'stake',
-      StellarSdk.nativeToScVal(poolId, { type: 'u128' }),
-      StellarSdk.nativeToScVal(amount, { type: 'u128' })
+      StellarSdk.nativeToScVal(Number(poolId), { type: 'u32' }),
+      StellarSdk.nativeToScVal(amount, { type: 'i128' })
     );
 
     const txHash = await buildAndSubmitTransaction(sourceAddress, [operation]);
@@ -331,8 +331,8 @@ export async function unstake(
 
     const operation = contract.call(
       'unstake',
-      StellarSdk.nativeToScVal(poolId, { type: 'u128' }),
-      StellarSdk.nativeToScVal(amount, { type: 'u128' })
+      StellarSdk.nativeToScVal(Number(poolId), { type: 'u32' }),
+      StellarSdk.nativeToScVal(amount, { type: 'i128' })
     );
 
     const txHash = await buildAndSubmitTransaction(sourceAddress, [operation]);
@@ -355,7 +355,7 @@ export async function claimRewards(
 
     const operation = contract.call(
       'claim_rewards',
-      StellarSdk.nativeToScVal(poolId, { type: 'u128' })
+      StellarSdk.nativeToScVal(Number(poolId), { type: 'u32' })
     );
 
     const txHash = await buildAndSubmitTransaction(sourceAddress, [operation]);
@@ -375,7 +375,7 @@ export async function getUserStakeInfo(
   sourceAddress: string
 ): Promise<{ staked: string; rewards: string } | null> {
   try {
-    const poolIdScVal = StellarSdk.nativeToScVal(poolId, { type: 'u128' });
+    const poolIdScVal = StellarSdk.nativeToScVal(Number(poolId), { type: 'u32' });
     const userScVal = StellarSdk.nativeToScVal(userAddress, { type: 'address' });
 
     const result = await callContract(
