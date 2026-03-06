@@ -7,7 +7,16 @@ export interface Token {
   logoURI?: string;
   balance?: string;
   price?: number;
+  // Extended metadata from discovery
+  issuer?: string;         // Classic asset issuer (for Stellar assets)
+  domain?: string;         // Token issuer domain
+  verified?: boolean;      // Verified by whitelist
+  popular?: boolean;       // Popular/featured token
+  rating?: number;         // StellarExpert rating
+  source?: TokenSource;    // Where the token was discovered
 }
+
+export type TokenSource = 'whitelist' | 'stellar_expert' | 'horizon' | 'factory' | 'custom';
 
 // Wallet types
 export interface WalletState {

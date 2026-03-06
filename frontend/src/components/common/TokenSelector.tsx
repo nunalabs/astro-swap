@@ -10,6 +10,7 @@ import { cn } from '../../lib/utils';
 // PERFORMANCE: Virtual scrolling - only render visible items
 const INITIAL_VISIBLE_COUNT = 20;
 const LOAD_MORE_COUNT = 20;
+const SEARCH_DEBOUNCE_MS = 300;
 
 interface TokenSelectorProps {
   selectedToken: Token | null;
@@ -22,20 +23,40 @@ export const TokenSelector = memo(function TokenSelector({ selectedToken, onSele
   const [showAddToken, setShowAddToken] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
+  const [asyncSearchResults, setAsyncSearchResults] = useState<Token[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const tokens = useTokenStore((state) => state.tokens);
   const favoriteTokens = useTokenStore((state) => state.favoriteTokens);
   const toggleFavorite = useTokenStore((state) => state.toggleFavorite);
   const isIndexing = useTokenStore((state) => state.isIndexing);
+  const isSearching = useTokenStore((state) => state.isSearching);
   const indexedTokens = useTokenStore((state) => state.indexedTokens);
+  const discoveredTokens = useTokenStore((state) => state.discoveredTokens);
   const indexTokensFromChain = useTokenStore((state) => state.indexTokensFromChain);
+  const discoverAllTokens = useTokenStore((state) => state.discoverAllTokens);
+  const searchTokensAsync = useTokenStore((state) => state.searchTokensAsync);
   const walletAddress = useWalletStore((state) => state.address);
 
+  // Discover tokens when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      discoverAllTokens();
+    }
+  }, [isOpen, discoverAllTokens]);
+
   // Memoize filtered tokens to avoid recalculating on every render
+  // Combine local tokens with async search results
   const filteredTokens = useMemo(() => {
-    return tokens.filter((token) => {
+    // If we have async search results, use those (they're already filtered)
+    const sourceTokens = hasSearched && asyncSearchResults.length > 0
+      ? asyncSearchResults
+      : tokens;
+
+    return sourceTokens.filter((token) => {
       if (excludeTokens.includes(token.address)) return false;
 
       if (!searchQuery) return true;
@@ -47,7 +68,34 @@ export const TokenSelector = memo(function TokenSelector({ selectedToken, onSele
         token.address.toLowerCase().includes(query)
       );
     });
-  }, [tokens, excludeTokens, searchQuery]);
+  }, [tokens, asyncSearchResults, hasSearched, excludeTokens, searchQuery]);
+
+  // Debounced async search
+  useEffect(() => {
+    if (searchQuery.length < 2) {
+      setAsyncSearchResults([]);
+      setHasSearched(false);
+      return;
+    }
+
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    // Debounce the search
+    searchTimeoutRef.current = setTimeout(async () => {
+      const results = await searchTokensAsync(searchQuery);
+      setAsyncSearchResults(results);
+      setHasSearched(true);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery, searchTokensAsync]);
 
   // Memoize favorites and regular lists
   const { favoriteList, regularList } = useMemo(() => ({
@@ -96,7 +144,14 @@ export const TokenSelector = memo(function TokenSelector({ selectedToken, onSele
   }, [onSelect]);
 
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
+    const value = e.target.value;
+    setSearchQuery(value);
+
+    // Clear async results if search is cleared
+    if (value.length < 2) {
+      setAsyncSearchResults([]);
+      setHasSearched(false);
+    }
   }, []);
 
   const handleRefreshTokens = useCallback(() => {
@@ -169,17 +224,29 @@ export const TokenSelector = memo(function TokenSelector({ selectedToken, onSele
             </button>
           </div>
 
-          {/* Indexing Status */}
-          {isIndexing && (
+          {/* Loading Status */}
+          {(isIndexing || isSearching) && (
             <div className="flex items-center gap-2 text-sm text-primary">
               <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              <span>Discovering tokens from pools...</span>
+              <span>
+                {isSearching ? 'Searching tokens...' : 'Discovering tokens from pools...'}
+              </span>
             </div>
           )}
 
           {/* Token count */}
-          <div className="text-xs text-neutral-500">
-            {tokens.length} tokens available {indexedTokens.length > 0 && `(${indexedTokens.length} from pools)`}
+          <div className="text-xs text-neutral-500 flex flex-wrap gap-2">
+            <span>{filteredTokens.length} tokens found</span>
+            {discoveredTokens.length > 0 && (
+              <span className="text-green-500">
+                ({discoveredTokens.filter(t => t.verified).length} verified)
+              </span>
+            )}
+            {indexedTokens.length > 0 && (
+              <span className="text-blue-500">
+                ({indexedTokens.length} from pools)
+              </span>
+            )}
           </div>
 
           {/* Token List - PERFORMANCE: Virtual scrolling with intersection observer */}
@@ -307,8 +374,32 @@ const TokenItem = memo(function TokenItem({ token, isFavorite, onSelect, onToggl
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-semibold">{token.symbol}</span>
+            {token.verified && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-green-500/20 text-green-400" title="Verified token">
+                <svg className="w-3 h-3 mr-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+              </span>
+            )}
+            {token.popular && !token.verified && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-primary/20 text-primary" title="Popular token">
+                Popular
+              </span>
+            )}
+            {token.rating && token.rating >= 4 && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-yellow-500/20 text-yellow-400" title={`Rating: ${token.rating.toFixed(1)}`}>
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                </svg>
+              </span>
+            )}
           </div>
-          <span className="text-sm text-neutral-400 truncate block">{token.name}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-neutral-400 truncate">{token.name}</span>
+            {token.domain && (
+              <span className="text-xs text-neutral-500 truncate">{token.domain}</span>
+            )}
+          </div>
         </div>
 
         {token.balance && (

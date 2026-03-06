@@ -1,0 +1,114 @@
+{
+  "version": "1.0.0",
+  "updated": "2026-03-06",
+  "tokens": [
+    {
+      "code": "XLM",
+      "issuer": "native",
+      "name": "Stellar Lumens",
+      "symbol": "XLM",
+      "decimals": 7,
+      "icon": "https://stellar.expert/img/vendor/xlm.svg",
+      "verified": true,
+      "popular": true
+    },
+    {
+      "code": "USDC",
+      "issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      "name": "USD Coin",
+      "symbol": "USDC",
+      "decimals": 7,
+      "icon": "https://stellar.expert/img/vendor/usdc.svg",
+      "domain": "centre.io",
+      "verified": true,
+      "popular": true
+    },
+    {
+      "code": "yUSDC",
+      "issuer": "GDGTVWSM4MGS4T7Z6W4RPWOCHE2I6RDFCIFZGS3DOA63LWQTRNZNTTFF",
+      "name": "yUSDC (Testnet)",
+      "symbol": "yUSDC",
+      "decimals": 7,
+      "icon": "https://stellar.expert/img/vendor/usdc.svg",
+      "domain": "testnet.stellar.org",
+      "verified": true,
+      "popular": true,
+      "testnet": true
+    },
+    {
+      "code": "EURC",
+      "issuer": "GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2",
+      "name": "Euro Coin",
+      "symbol": "EURC",
+      "decimals": 7,
+      "icon": "https://stellar.expert/img/vendor/eurc.png",
+      "domain": "circle.com",
+      "verified": true,
+      "popular": false
+    },
+    {
+      "code": "BTC",
+      "issuer": "GDPJALI4AZKUU2W426U5WKMAT6CN3AJRPIIRYR2YM54TL2GDWO5O2MZM",
+      "name": "Bitcoin (Ultrastellar)",
+      "symbol": "BTC",
+      "decimals": 7,
+      "icon": "https://stellar.expert/img/vendor/btc.svg",
+      "domain": "ultrastellar.com",
+      "verified": true,
+      "popular": true
+    },
+    {
+      "code": "ETH",
+      "issuer": "GDPJALI4AZKUU2W426U5WKMAT6CN3AJRPIIRYR2YM54TL2GDWO5O2MZM",
+      "name": "Ethereum (Ultrastellar)",
+      "symbol": "ETH",
+      "decimals": 7,
+      "icon": "https://stellar.expert/img/vendor/eth.svg",
+      "domain": "ultrastellar.com",
+      "verified": true,
+      "popular": true
+    },
+    {
+      "code": "AQUA",
+      "issuer": "GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA",
+      "name": "Aquarius",
+      "symbol": "AQUA",
+      "decimals": 7,
+      "icon": "https://aqua.network/assets/img/aqua-logo.svg",
+      "domain": "aqua.network",
+      "verified": true,
+      "popular": true
+    },
+    {
+      "code": "SHX",
+      "issuer": "GDSTRSHXHGJ7ZIVRBXEYE5Q74XUVCUSEZ3QWPZ5VWH5GJ2QYV4PHXTSH",
+      "name": "Stronghold",
+      "symbol": "SHX",
+      "decimals": 7,
+      "icon": "https://stellar.expert/img/vendor/shx.png",
+      "domain": "stronghold.co",
+      "verified": true,
+      "popular": false
+    },
+    {
+      "code": "yXLM",
+      "issuer": "GARDNV3Q7YGT4AKSDF25LT32YSCCW4EV22Y2TV3I2PU2MMXJTEDL5T55",
+      "name": "Ultra Yield XLM",
+      "symbol": "yXLM",
+      "decimals": 7,
+      "domain": "ultrastellar.com",
+      "verified": true,
+      "popular": false
+    },
+    {
+      "code": "FIDR",
+      "issuer": "GBZQNUAGO4DZFWOHJ3PVXZKZ2LTSOVAMCTVM46OEMWNWTED4DFS3NAYH",
+      "name": "Fiduciary Dollar",
+      "symbol": "FIDR",
+      "decimals": 7,
+      "domain": "anclap.com",
+      "verified": true,
+      "popular": false
+    }
+  ]
+}

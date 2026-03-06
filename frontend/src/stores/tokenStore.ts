@@ -2,6 +2,11 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Token } from '../types';
 import { indexTokensFromFactory, fetchTokenMetadata } from '../lib/token-indexer';
+import {
+  getWhitelistTokens,
+  discoverTokens,
+  fetchStellarExpertTokens,
+} from '../lib/tokens';
 
 // Native XLM wrapped address for Soroban (SAC)
 const NATIVE_XLM_SAC = 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC';
@@ -10,32 +15,54 @@ const NATIVE_XLM_SAC = 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
 // Issuer: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
 const USDC_TESTNET_SAC = 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA';
 
-// Base tokens that are always available (even without pairs)
-const BASE_TOKENS: Token[] = [
-  {
-    address: NATIVE_XLM_SAC,
-    symbol: 'XLM',
-    name: 'Stellar Lumens',
-    decimals: 7,
-    logoURI: 'https://assets.coingecko.com/coins/images/100/small/Stellar_symbol_black_RGB.png',
-  },
-  {
-    address: USDC_TESTNET_SAC,
-    symbol: 'USDC',
-    name: 'USD Coin (Testnet)',
-    decimals: 7,
-    logoURI: 'https://assets.coingecko.com/coins/images/6319/small/USD_Coin_icon.png',
-  },
-];
+// Initialize base tokens from whitelist
+const getBaseTokens = (): Token[] => {
+  const whitelistTokens = getWhitelistTokens();
+  const popularTokens = whitelistTokens.filter(t => t.popular);
+
+  // Fallback if whitelist is empty
+  if (popularTokens.length === 0) {
+    return [
+      {
+        address: NATIVE_XLM_SAC,
+        symbol: 'XLM',
+        name: 'Stellar Lumens',
+        decimals: 7,
+        logoURI: 'https://assets.coingecko.com/coins/images/100/small/Stellar_symbol_black_RGB.png',
+        verified: true,
+        popular: true,
+        source: 'whitelist',
+      },
+      {
+        address: USDC_TESTNET_SAC,
+        symbol: 'USDC',
+        name: 'USD Coin (Testnet)',
+        decimals: 7,
+        logoURI: 'https://assets.coingecko.com/coins/images/6319/small/USD_Coin_icon.png',
+        verified: true,
+        popular: true,
+        source: 'whitelist',
+      },
+    ];
+  }
+
+  return popularTokens;
+};
+
+// Get all whitelist tokens for BASE_TOKENS
+const BASE_TOKENS: Token[] = getBaseTokens();
 
 interface TokenState {
   tokens: Token[];
   indexedTokens: Token[]; // Tokens discovered from factory
+  discoveredTokens: Token[]; // Tokens from all discovery sources
   favoriteTokens: string[];
   customTokens: Token[];
   isLoading: boolean;
   isIndexing: boolean;
+  isSearching: boolean;
   lastIndexTime: number | null;
+  lastDiscoveryTime: number | null;
   addToken: (token: Token) => void;
   addCustomToken: (token: Token) => Promise<boolean>;
   removeToken: (address: string) => void;
@@ -44,9 +71,13 @@ interface TokenState {
   toggleFavorite: (address: string) => void;
   getToken: (address: string) => Token | undefined;
   searchTokens: (query: string) => Token[];
+  searchTokensAsync: (query: string) => Promise<Token[]>; // New: async search with APIs
   loadTokensFromNetwork: () => Promise<void>;
+  discoverAllTokens: () => Promise<void>; // New: discover from all sources
   indexTokensFromChain: (walletAddress: string) => Promise<void>;
   fetchAndAddToken: (contractAddress: string) => Promise<Token | null>;
+  getVerifiedTokens: () => Token[]; // New: get only verified tokens
+  getPopularTokens: () => Token[]; // New: get popular tokens
 }
 
 export const useTokenStore = create<TokenState>()(
@@ -54,11 +85,14 @@ export const useTokenStore = create<TokenState>()(
     (set, get) => ({
       tokens: BASE_TOKENS,
       indexedTokens: [],
+      discoveredTokens: [],
       favoriteTokens: [NATIVE_XLM_SAC, USDC_TESTNET_SAC],
       customTokens: [],
       isLoading: false,
       isIndexing: false,
+      isSearching: false,
       lastIndexTime: null,
+      lastDiscoveryTime: null,
 
       addToken: (token: Token) => {
         set((state) => {
@@ -142,6 +176,112 @@ export const useTokenStore = create<TokenState>()(
             token.name.toLowerCase().includes(lowerQuery) ||
             token.address.toLowerCase().includes(lowerQuery)
         );
+      },
+
+      /**
+       * Async search that queries all token sources
+       * Use this for the search input to find tokens not yet in local state
+       */
+      searchTokensAsync: async (query: string) => {
+        if (!query || query.length < 2) {
+          return get().tokens;
+        }
+
+        set({ isSearching: true });
+
+        try {
+          // First, search local tokens
+          const localResults = get().searchTokens(query);
+
+          // Then, search external sources
+          const discoveredResults = await discoverTokens(query);
+
+          // Merge results (local first, then discovered)
+          const mergedMap = new Map<string, Token>();
+
+          // Local results have priority
+          for (const token of localResults) {
+            mergedMap.set(token.address, token);
+          }
+
+          // Add discovered tokens that aren't already in local
+          for (const token of discoveredResults) {
+            if (!mergedMap.has(token.address)) {
+              mergedMap.set(token.address, token);
+            }
+          }
+
+          const results = Array.from(mergedMap.values());
+
+          set({ isSearching: false });
+          return results;
+        } catch (error) {
+          console.error('Error in async token search:', error);
+          set({ isSearching: false });
+          return get().searchTokens(query);
+        }
+      },
+
+      /**
+       * Get only verified tokens (from whitelist or high-rated)
+       */
+      getVerifiedTokens: () => {
+        return get().tokens.filter(t => t.verified);
+      },
+
+      /**
+       * Get popular/featured tokens
+       */
+      getPopularTokens: () => {
+        return get().tokens.filter(t => t.popular);
+      },
+
+      /**
+       * Discover tokens from all sources (whitelist, StellarExpert, etc.)
+       */
+      discoverAllTokens: async () => {
+        const { isLoading, lastDiscoveryTime } = get();
+
+        // Rate limit discovery to every 2 minutes
+        if (isLoading) return;
+        if (lastDiscoveryTime && Date.now() - lastDiscoveryTime < 120000) {
+          console.log('Token discovery skipped - rate limited');
+          return;
+        }
+
+        set({ isLoading: true });
+
+        try {
+          console.log('Starting comprehensive token discovery...');
+
+          // Fetch from all sources
+          const [whitelistTokens, expertTokens] = await Promise.all([
+            Promise.resolve(getWhitelistTokens()),
+            fetchStellarExpertTokens({ limit: 50 }),
+          ]);
+
+          console.log(`Discovered: ${whitelistTokens.length} whitelist, ${expertTokens.length} expert tokens`);
+
+          const { customTokens, indexedTokens } = get();
+
+          // Merge all sources with priority
+          const allTokens = mergeTokenLists(
+            whitelistTokens,      // Highest priority
+            expertTokens,         // Second priority
+            indexedTokens,        // Third: on-chain discovered
+            customTokens          // Lowest: user-added
+          );
+
+          set({
+            tokens: allTokens,
+            discoveredTokens: [...whitelistTokens, ...expertTokens],
+            isLoading: false,
+            lastDiscoveryTime: Date.now(),
+          });
+        } catch (error) {
+          console.error('Error discovering tokens:', error);
+          set({ isLoading: false });
+        }
       },
 
       loadTokensFromNetwork: async () => {
@@ -237,13 +377,19 @@ export const useTokenStore = create<TokenState>()(
         favoriteTokens: state.favoriteTokens,
         customTokens: state.customTokens,
         indexedTokens: state.indexedTokens,
+        discoveredTokens: state.discoveredTokens,
         lastIndexTime: state.lastIndexTime,
+        lastDiscoveryTime: state.lastDiscoveryTime,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
-          // Merge all token sources on rehydration
+          // Get fresh whitelist tokens
+          const whitelistTokens = getWhitelistTokens();
+
+          // Merge all token sources on rehydration with priority
           state.tokens = mergeTokenLists(
-            BASE_TOKENS,
+            whitelistTokens,           // Whitelist always first
+            state.discoveredTokens || [],
             state.indexedTokens || [],
             state.customTokens || []
           );
