@@ -53,9 +53,12 @@ export function getWhitelistTokens(): Token[] {
     if (isTestnet && !wt.testnet && wt.issuer !== 'native') continue;
 
     // Use contractId if available (SAC address), otherwise create composite
-    const address = wt.issuer === 'native'
-      ? 'native'
-      : wt.contractId || createSACAddress(wt.code, wt.issuer);
+    // For native XLM, prefer contractId (SAC) for Soroban compatibility
+    const address = wt.contractId
+      ? wt.contractId
+      : wt.issuer === 'native'
+        ? 'native'
+        : createSACAddress(wt.code, wt.issuer);
 
     tokens.push({
       address,

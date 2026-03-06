@@ -15,8 +15,14 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
   const [priceImpact, setPriceImpact] = useState(0);
   const [route, setRoute] = useState<Token[]>([]);
 
-  const address = useWalletStore((state) => state.address);
+  const walletAddress = useWalletStore((state) => state.address);
   const slippageTolerance = useSettingsStore((state) => state.slippageTolerance);
+
+  // Use a fallback address for quotes when wallet is not connected
+  // This allows users to see rates before connecting
+  // Using a valid funded testnet address for simulation
+  const QUOTE_FALLBACK_ADDRESS = 'GAYES36VZUWL437CC2IIJ7OUCWYWESEOJ6GITMTCHEF6OOYWIUNBKVXI';
+  const address = walletAddress || QUOTE_FALLBACK_ADDRESS;
   const deadline = useSettingsStore((state) => state.deadline);
   const addToast = useSettingsStore((state) => state.addToast);
   const addTransaction = useTransactionStore((state) => state.addTransaction);
@@ -72,7 +78,7 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
   // Swap mutation
   const swapMutation = useMutation({
     mutationFn: async () => {
-      if (!tokenIn || !tokenOut || !address) {
+      if (!tokenIn || !tokenOut || !walletAddress) {
         throw new Error('Missing required parameters');
       }
 
@@ -84,9 +90,9 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
         amountIn,
         minimumReceived,
         pathAddresses,
-        address,
+        walletAddress,
         deadlineTimestamp,
-        address
+        walletAddress
       );
     },
     onMutate: () => {
@@ -154,7 +160,7 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
 
   // Pre-validate swap with simulation before confirming
   const validateSwap = useCallback(async (): Promise<boolean> => {
-    if (!tokenIn || !tokenOut || !amountIn || !amountOut || !address) {
+    if (!tokenIn || !tokenOut || !amountIn || !amountOut || !walletAddress) {
       return false;
     }
 
@@ -166,7 +172,7 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
       amountIn,
       amountOutMin: minimumReceived,
       path: pathAddresses,
-      to: address,
+      to: walletAddress,
       deadline: deadlineTimestamp,
     });
 
@@ -180,7 +186,7 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
     }
 
     return true;
-  }, [tokenIn, tokenOut, amountIn, amountOut, address, route, slippageTolerance, deadline, simulateSwap, addToast]);
+  }, [tokenIn, tokenOut, amountIn, amountOut, walletAddress, route, slippageTolerance, deadline, simulateSwap, addToast]);
 
   const swap = useCallback(async () => {
     if (!tokenIn || !tokenOut || !amountIn || !amountOut) {

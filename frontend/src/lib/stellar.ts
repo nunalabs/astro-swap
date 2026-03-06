@@ -277,7 +277,12 @@ export async function callContract(
       return StellarSdk.scValToNative(result.result!.retval);
     }
 
-    throw new Error('Contract call simulation failed');
+    // Extract detailed error from simulation
+    const errorDetail = StellarSdk.SorobanRpc.Api.isSimulationError(result)
+      ? result.error
+      : 'Unknown simulation error';
+    console.error('Simulation failed:', errorDetail, result);
+    throw new Error(`Contract call simulation failed: ${errorDetail}`);
   } catch (error) {
     console.error('Error calling contract:', error);
     throw error;
