@@ -159,7 +159,11 @@ function calculateAmountOut(amountIn: bigint, reserveIn: bigint, reserveOut: big
 }
 
 /**
- * Get amounts out for a path - calculates locally using pair reserves
+ * Get amounts out for a path - OPTIMIZED with batch RPC calls
+ * Reduces N+1 query problem by fetching all pair data in parallel
+ *
+ * Performance: 3N sequential calls → 2 parallel batches
+ * Example: 3-hop swap goes from 9 sequential to 6 parallel calls
  */
 export async function getAmountsOut(
   amountIn: string,
@@ -172,29 +176,50 @@ export async function getAmountsOut(
       return [];
     }
 
+    // Step 1: Get all pair addresses in parallel (1 batch)
+    const pairPromises = [];
+    for (let i = 0; i < path.length - 1; i++) {
+      pairPromises.push(
+        getPairAddress(path[i], path[i + 1], sourceAddress)
+      );
+    }
+
+    const pairAddresses = await Promise.all(pairPromises);
+
+    // Validate all pairs exist
+    for (let i = 0; i < pairAddresses.length; i++) {
+      if (!pairAddresses[i]) {
+        console.error('Pair not found for', path[i], '->', path[i + 1]);
+        return [];
+      }
+    }
+
+    // Step 2: Get all reserves and token0 in parallel (1 batch)
+    const pairDataPromises = pairAddresses.map(async (pairAddress) => {
+      const [reserves, token0] = await Promise.all([
+        getReserves(pairAddress!, sourceAddress),
+        callContract(pairAddress!, 'token_0', [], sourceAddress) as Promise<string>,
+      ]);
+      return { pairAddress, reserves, token0 };
+    });
+
+    const pairDataList = await Promise.all(pairDataPromises);
+
+    // Validate all data retrieved
+    for (const pairData of pairDataList) {
+      if (!pairData.reserves) {
+        console.error('Could not get reserves for pair', pairData.pairAddress);
+        return [];
+      }
+    }
+
+    // Step 3: Calculate amounts locally (no RPC calls)
     const amounts: string[] = [amountIn];
     let currentAmount = BigInt(amountIn);
 
     for (let i = 0; i < path.length - 1; i++) {
       const tokenIn = path[i];
-      const tokenOut = path[i + 1];
-
-      // Get pair address
-      const pairAddress = await getPairAddress(tokenIn, tokenOut, sourceAddress);
-      if (!pairAddress) {
-        console.error('Pair not found for', tokenIn, '->', tokenOut);
-        return [];
-      }
-
-      // Get reserves
-      const reserves = await getReserves(pairAddress, sourceAddress);
-      if (!reserves) {
-        console.error('Could not get reserves for pair', pairAddress);
-        return [];
-      }
-
-      // Get token order in the pair
-      const token0 = await callContract(pairAddress, 'token_0', [], sourceAddress) as string;
+      const { reserves, token0 } = pairDataList[i];
 
       // Parse reserves as BigInt
       let reserveIn: bigint;
@@ -211,7 +236,7 @@ export async function getAmountsOut(
         reserveOut = tokenIn === token0 ? BigInt(reserves.reserve1) : BigInt(reserves.reserve0);
       }
 
-      // Calculate output amount
+      // Calculate output amount (local computation)
       const amountOut = calculateAmountOut(currentAmount, reserveIn, reserveOut);
       amounts.push(amountOut.toString());
       currentAmount = amountOut;
