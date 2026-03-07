@@ -185,26 +185,68 @@ export function usePool() {
       tokenA,
       tokenB,
       liquidity,
+      pool,
     }: {
       tokenA: Token;
       tokenB: Token;
       liquidity: string;
+      pool?: Pool; // Optional pool data for slippage calculation
     }) => {
       if (!address) throw new Error('Wallet not connected');
 
       // LP tokens have 7 decimals (same as Stellar native)
       const rawLiquidity = parseTokenAmount(liquidity, 7);
 
-      // Calculate minimum amounts based on current reserves
-      // Setting to 0 means we accept any amount (user should be shown warnings)
-      const amountAMin = '0';
-      const amountBMin = '0';
+      // Calculate minimum amounts based on current reserves with slippage protection
+      let amountAMin = '0';
+      let amountBMin = '0';
+
+      if (pool && pool.totalSupply) {
+        try {
+          // Calculate expected output amounts based on pool share
+          const liquidityBigInt = BigInt(rawLiquidity);
+          const totalSupplyBigInt = BigInt(pool.totalSupply);
+          const reserve0BigInt = BigInt(pool.reserve0);
+          const reserve1BigInt = BigInt(pool.reserve1);
+
+          // expectedAmountA = (liquidity * reserve0) / totalSupply
+          const expectedAmountA = (liquidityBigInt * reserve0BigInt) / totalSupplyBigInt;
+          // expectedAmountB = (liquidity * reserve1) / totalSupply
+          const expectedAmountB = (liquidityBigInt * reserve1BigInt) / totalSupplyBigInt;
+
+          // Apply slippage tolerance (default from settings)
+          const slippageBps = Math.floor(slippageTolerance * 100);
+          const slippageMultiplier = BigInt(10000 - slippageBps);
+
+          // amountMin = expectedAmount * (10000 - slippageBps) / 10000
+          amountAMin = ((expectedAmountA * slippageMultiplier) / 10000n).toString();
+          amountBMin = ((expectedAmountB * slippageMultiplier) / 10000n).toString();
+
+          console.log('Slippage protection enabled:', {
+            expectedAmountA: expectedAmountA.toString(),
+            expectedAmountB: expectedAmountB.toString(),
+            amountAMin,
+            amountBMin,
+            slippageTolerance: `${slippageTolerance}%`,
+          });
+        } catch (error) {
+          console.error('Error calculating minimum amounts:', error);
+          // Fall back to 0 if calculation fails (accept any amount)
+          amountAMin = '0';
+          amountBMin = '0';
+        }
+      } else {
+        console.warn('No pool data provided - removing liquidity without slippage protection');
+      }
+
       const deadlineTimestamp = Math.floor(Date.now() / 1000) + deadline * 60;
 
       console.log('Removing liquidity:', {
         tokenA: tokenA.address,
         tokenB: tokenB.address,
         rawLiquidity,
+        amountAMin,
+        amountBMin,
         deadline: deadlineTimestamp,
       });
 

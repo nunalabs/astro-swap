@@ -1,5 +1,6 @@
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { callContract, buildAndSubmitTransaction } from './stellar';
+import { isValidContractId } from './utils';
 import type { Pool, Token } from '../types';
 
 // Contract addresses (set via environment variables)
@@ -10,6 +11,48 @@ export const CONTRACTS = {
   AGGREGATOR: import.meta.env.VITE_AGGREGATOR_CONTRACT_ID || '',
   BRIDGE: import.meta.env.VITE_BRIDGE_CONTRACT_ID || '',
 };
+
+/**
+ * Validate critical contract addresses on module load
+ * Throws error if required contracts are missing or invalid
+ */
+function validateContracts() {
+  const criticalContracts = [
+    { name: 'FACTORY', address: CONTRACTS.FACTORY },
+    { name: 'ROUTER', address: CONTRACTS.ROUTER },
+  ];
+
+  const errors: string[] = [];
+
+  for (const { name, address } of criticalContracts) {
+    if (!address) {
+      errors.push(`Missing environment variable: VITE_${name}_CONTRACT_ID`);
+    } else if (!isValidContractId(address)) {
+      errors.push(
+        `Invalid ${name} contract address: ${address}. Must start with 'C' and be 56 characters long.`
+      );
+    }
+  }
+
+  if (errors.length > 0) {
+    const errorMessage = [
+      '❌ Contract Configuration Error:',
+      ...errors,
+      '',
+      'Please check your .env file and ensure all required contract addresses are set.',
+    ].join('\n');
+
+    console.error(errorMessage);
+
+    // In development, show error in UI
+    if (import.meta.env.DEV) {
+      throw new Error(errorMessage);
+    }
+  }
+}
+
+// Validate contracts on module load
+validateContracts();
 
 /**
  * Factory Contract - Get all pairs

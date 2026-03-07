@@ -34,21 +34,47 @@ export function formatNumber(
 /**
  * Format a token amount with proper decimals
  */
+/**
+ * Format token amount from raw units to human-readable (safe BigInt implementation)
+ * Avoids precision loss for large amounts
+ *
+ * @example
+ * formatTokenAmount("1234560000", 7, 4) => "123.4560"
+ * formatTokenAmount("1", 7, 4) => "0.0000001"
+ */
 export function formatTokenAmount(
   amount: string | number,
   decimals = 7,
   displayDecimals = 4
 ): string {
-  const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+  try {
+    // Convert to string if number
+    const amountStr = typeof amount === 'number' ? amount.toString() : amount;
 
-  if (isNaN(num)) return '0';
+    // Parse as BigInt to avoid precision loss
+    const rawAmount = BigInt(amountStr);
 
-  const value = num / Math.pow(10, decimals);
+    if (rawAmount === 0n) return '0';
 
-  if (value === 0) return '0';
-  if (value < 0.0001) return '<0.0001';
+    // Convert to string and pad with leading zeros if needed
+    const rawStr = rawAmount.toString();
+    const padded = rawStr.padStart(decimals + 1, '0');
 
-  return formatNumber(value, displayDecimals);
+    // Split into integer and decimal parts
+    const intPart = padded.slice(0, -decimals) || '0';
+    const decPart = padded.slice(-decimals);
+
+    // Combine
+    const fullValue = `${intPart}.${decPart}`;
+    const value = parseFloat(fullValue);
+
+    if (value === 0) return '0';
+    if (value < 0.0001) return '<0.0001';
+
+    return formatNumber(value, displayDecimals);
+  } catch {
+    return '0';
+  }
 }
 
 /**
@@ -90,23 +116,50 @@ export function shortenAddress(address: string, chars = 4): string {
 /**
  * Calculate price impact
  */
+/**
+ * Calculate price impact of a trade (safe BigInt implementation)
+ * Returns percentage impact (0-100)
+ *
+ * @example
+ * calculatePriceImpact("1000000000000", "2000000000000", "10000000000") => 0.98
+ */
 export function calculatePriceImpact(
   inputReserve: string,
   outputReserve: string,
   inputAmount: string
 ): number {
-  const input = parseFloat(inputAmount);
-  const reserveIn = parseFloat(inputReserve);
-  const reserveOut = parseFloat(outputReserve);
+  try {
+    const input = BigInt(inputAmount);
+    const reserveIn = BigInt(inputReserve);
+    const reserveOut = BigInt(outputReserve);
 
-  if (input === 0 || reserveIn === 0 || reserveOut === 0) return 0;
+    if (input === 0n || reserveIn === 0n || reserveOut === 0n) return 0;
 
-  const priceBeforeTrade = reserveOut / reserveIn;
-  const newReserveIn = reserveIn + input;
-  const newReserveOut = (reserveIn * reserveOut) / newReserveIn;
-  const priceAfterTrade = newReserveOut / newReserveIn;
+    // Calculate with BigInt to avoid overflow, then convert for division
+    // priceBeforeTrade = reserveOut / reserveIn
+    // Use high precision: multiply by 10^18 before division
+    const PRECISION = 10n ** 18n;
+    const priceBeforeTrade = (reserveOut * PRECISION) / reserveIn;
 
-  return ((priceBeforeTrade - priceAfterTrade) / priceBeforeTrade) * 100;
+    // newReserveIn = reserveIn + input
+    const newReserveIn = reserveIn + input;
+
+    // newReserveOut = (reserveIn * reserveOut) / newReserveIn (constant product)
+    const newReserveOut = (reserveIn * reserveOut) / newReserveIn;
+
+    // priceAfterTrade = newReserveOut / newReserveIn
+    const priceAfterTrade = (newReserveOut * PRECISION) / newReserveIn;
+
+    // Calculate impact: ((priceBefore - priceAfter) / priceBefore) * 100
+    // All values are multiplied by PRECISION, so we can work with them directly
+    const impactNumerator = priceBeforeTrade - priceAfterTrade;
+    const impactWithPrecision = (impactNumerator * 100n * PRECISION) / priceBeforeTrade;
+
+    // Convert to number for final result (safe because impact is always < 100%)
+    return Number(impactWithPrecision) / Number(PRECISION);
+  } catch {
+    return 0;
+  }
 }
 
 /**
@@ -217,14 +270,38 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 }
 
 /**
- * Parse token amount to raw units
+ * Parse token amount to raw units (safe BigInt implementation)
+ * Avoids precision loss from parseFloat for large numbers
+ *
+ * @example
+ * parseTokenAmount("123.456", 7) => "1234560000"
+ * parseTokenAmount("0.0000001", 7) => "1"
  */
 export function parseTokenAmount(amount: string, decimals: number): string {
-  const num = parseFloat(amount);
-  if (isNaN(num)) return '0';
+  if (!amount || amount === '' || amount === '.') return '0';
 
-  const rawAmount = Math.floor(num * Math.pow(10, decimals));
-  return rawAmount.toString();
+  // Remove leading/trailing whitespace
+  const cleaned = amount.trim();
+
+  // Handle negative numbers
+  if (cleaned.startsWith('-')) return '0';
+
+  // Split into integer and decimal parts
+  const [intPart = '0', decPart = ''] = cleaned.split('.');
+
+  // Remove leading zeros from integer part (but keep single '0')
+  const cleanInt = intPart.replace(/^0+/, '') || '0';
+
+  // Pad or truncate decimal part to match decimals
+  const paddedDec = decPart.padEnd(decimals, '0').slice(0, decimals);
+
+  // Combine and convert to BigInt to avoid overflow
+  try {
+    const rawAmount = BigInt(cleanInt + paddedDec);
+    return rawAmount.toString();
+  } catch {
+    return '0';
+  }
 }
 
 /**

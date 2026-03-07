@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { sorobanServer, NETWORK_PASSPHRASE, server } from '../lib/stellar';
@@ -162,29 +162,183 @@ export function useTokenApproval(
 
 /**
  * Hook for managing multiple token approvals (e.g., for add liquidity)
+ * FIXED: No longer violates Rules of Hooks by calling hooks in a loop
  */
 export function useMultiTokenApproval(
   tokens: Array<{ address: string | null; amount: string }>,
   spenderAddress: string
 ) {
+  const address = useWalletStore((state) => state.address);
+  const addToast = useSettingsStore((state) => state.addToast);
+  const queryClient = useQueryClient();
+
+  // Single state object to track all token approvals
+  const [approvalStates, setApprovalStates] = useState<
+    Map<string, { allowance: string; isApproving: boolean; error: string | null }>
+  >(new Map());
+
   const [currentTokenIndex, setCurrentTokenIndex] = useState(0);
 
-  const tokenApprovals = tokens.map((token) =>
-    useTokenApproval(token.address, spenderAddress, token.amount)
-  );
+  // Fetch all allowances in parallel using React Query
+  const allowanceQueries = useQuery({
+    queryKey: ['multi-allowances', tokens.map(t => t.address).join(','), address, spenderAddress],
+    queryFn: async () => {
+      if (!address || tokens.length === 0) return new Map();
+
+      const results = await Promise.all(
+        tokens.map(async (token) => {
+          if (!token.address) return { address: null, allowance: '0' };
+          try {
+            const allowance = await getAllowance(token.address, address, spenderAddress);
+            return { address: token.address, allowance };
+          } catch {
+            return { address: token.address, allowance: '0' };
+          }
+        })
+      );
+
+      const allowanceMap = new Map<string, { allowance: string; isApproving: boolean; error: string | null }>();
+      results.forEach((result) => {
+        if (result.address) {
+          allowanceMap.set(result.address, {
+            allowance: result.allowance,
+            isApproving: false,
+            error: null,
+          });
+        }
+      });
+
+      return allowanceMap;
+    },
+    enabled: !!address && tokens.length > 0 && tokens.some(t => t.address !== null),
+    staleTime: 10000,
+    refetchOnWindowFocus: false,
+  });
+
+  // Update local state when query data changes
+  useEffect(() => {
+    if (allowanceQueries.data) {
+      setApprovalStates(allowanceQueries.data);
+    }
+  }, [allowanceQueries.data]);
+
+  // Approval mutation
+  const approveMutation = useMutation({
+    mutationFn: async ({ tokenAddress, amount }: { tokenAddress: string; amount: string }) => {
+      if (!address) throw new Error('Wallet not connected');
+      return approveToken(tokenAddress, spenderAddress, amount, address);
+    },
+    onMutate: ({ tokenAddress }) => {
+      // Optimistically update state
+      setApprovalStates((prev) => {
+        const newMap = new Map(prev);
+        const existing = newMap.get(tokenAddress) || { allowance: '0', isApproving: false, error: null };
+        newMap.set(tokenAddress, { ...existing, isApproving: true, error: null });
+        return newMap;
+      });
+    },
+    onSuccess: (_, { tokenAddress }) => {
+      addToast({
+        type: 'success',
+        title: 'Approval Successful',
+        description: 'Token spending approved.',
+      });
+
+      // Refetch all allowances
+      queryClient.invalidateQueries({
+        queryKey: ['multi-allowances', tokens.map(t => t.address).join(','), address, spenderAddress],
+      });
+    },
+    onError: (error, { tokenAddress }) => {
+      const errorToast = formatErrorForToast(error);
+      addToast(errorToast);
+
+      setApprovalStates((prev) => {
+        const newMap = new Map(prev);
+        const existing = newMap.get(tokenAddress) || { allowance: '0', isApproving: false, error: null };
+        newMap.set(tokenAddress, {
+          ...existing,
+          isApproving: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+        return newMap;
+      });
+    },
+  });
+
+  // Check approval status for each token
+  const tokenApprovals = tokens.map((token, index) => {
+    if (!token.address) {
+      return {
+        status: 'unknown' as ApprovalStatus,
+        allowance: '0',
+        isApproving: false,
+        error: null,
+        needsApproval: false,
+        approve: async () => {},
+        index,
+        address: null,
+      };
+    }
+
+    const state = approvalStates.get(token.address);
+    const allowance = state?.allowance || '0';
+    const isApproving = state?.isApproving || false;
+    const error = state?.error || null;
+
+    let status: ApprovalStatus = 'unknown';
+    let needsApproval = false;
+
+    if (!allowanceQueries.isLoading && state) {
+      try {
+        const currentAllowance = BigInt(allowance);
+        const required = BigInt(token.amount || '0');
+
+        if (required === BigInt(0)) {
+          status = 'approved';
+        } else if (currentAllowance >= required) {
+          status = 'approved';
+        } else {
+          status = 'none';
+          needsApproval = true;
+        }
+      } catch {
+        status = 'none';
+        needsApproval = true;
+      }
+    }
+
+    return {
+      status,
+      allowance,
+      isApproving,
+      error,
+      needsApproval,
+      approve: async () => {
+        // Use max u128 for unlimited approval
+        await approveMutation.mutateAsync({
+          tokenAddress: token.address!,
+          amount: '340282366920938463463374607431768211455',
+        });
+      },
+      index,
+      address: token.address,
+    };
+  });
 
   const allApproved = tokenApprovals.every((approval) => approval.status === 'approved');
   const anyApproving = tokenApprovals.some((approval) => approval.isApproving);
-  const tokensNeedingApproval = tokenApprovals
-    .map((approval, index) => ({ ...approval, index, address: tokens[index].address }))
-    .filter((approval) => approval.needsApproval);
+  const tokensNeedingApproval = tokenApprovals.filter((approval) => approval.needsApproval);
 
   const approveNext = useCallback(async () => {
     const nextToken = tokensNeedingApproval[0];
-    if (nextToken) {
-      await nextToken.approve();
+    if (nextToken && nextToken.address) {
+      await approveMutation.mutateAsync({
+        tokenAddress: nextToken.address,
+        amount: '340282366920938463463374607431768211455',
+      });
     }
-  }, [tokensNeedingApproval]);
+  }, [tokensNeedingApproval, approveMutation]);
 
   return {
     tokenApprovals,
@@ -194,6 +348,7 @@ export function useMultiTokenApproval(
     approveNext,
     currentTokenIndex,
     setCurrentTokenIndex,
+    isLoading: allowanceQueries.isLoading,
   };
 }
 

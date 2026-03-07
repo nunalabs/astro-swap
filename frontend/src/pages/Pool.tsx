@@ -44,6 +44,7 @@ export function Pool() {
         tokenA: selectedPool.token0,
         tokenB: selectedPool.token1,
         liquidity: removeAmount,
+        pool: selectedPool, // Pass pool data for slippage protection
       });
       setShowRemoveModal(false);
       setRemoveAmount('');
