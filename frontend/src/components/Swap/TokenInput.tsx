@@ -51,9 +51,33 @@ export const TokenInput = memo(function TokenInput({
     }
   }, [balance, token?.symbol, onAmountChange]);
 
-  const handleAmountChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    onAmountChange(e.target.value);
-  }, [onAmountChange]);
+  const handleAmountChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+
+      // Allow empty string (for clearing input)
+      if (value === '') {
+        onAmountChange('');
+        return;
+      }
+
+      // Validate input: positive numbers only, no scientific notation, max 7 decimals
+      // Pattern: optional digits, optional decimal point, optional digits (max 7)
+      const isValid = /^[0-9]*\.?[0-9]{0,7}$/.test(value);
+
+      if (isValid) {
+        // Additional check: prevent leading zeros (except "0." pattern)
+        if (value.length > 1 && value[0] === '0' && value[1] !== '.') {
+          // Remove leading zeros
+          onAmountChange(value.replace(/^0+/, ''));
+        } else {
+          onAmountChange(value);
+        }
+      }
+      // If invalid, ignore the input (don't update state)
+    },
+    [onAmountChange]
+  );
 
   const displayBalance = () => {
     if (isLoadingBalance) return '...';

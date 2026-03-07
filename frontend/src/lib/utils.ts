@@ -362,3 +362,46 @@ export function truncate(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength)}...`;
 }
+
+/**
+ * Apply slippage tolerance to an amount (BigInt arithmetic)
+ * Returns the minimum amount after applying slippage
+ *
+ * @param amount - The expected amount as string
+ * @param slippagePercent - Slippage tolerance as percentage (e.g., 0.5 for 0.5%)
+ * @returns Minimum amount as string
+ *
+ * @example
+ * applySlippage("1000000000", 0.5) => "995000000" (0.5% slippage)
+ * applySlippage("1000000000", 1.0) => "990000000" (1.0% slippage)
+ */
+export function applySlippage(amount: string, slippagePercent: number): string {
+  try {
+    const amountBigInt = BigInt(amount);
+    const slippageBps = Math.floor(slippagePercent * 100); // Convert to basis points
+    const multiplier = BigInt(10000 - slippageBps);
+
+    // minAmount = amount * (10000 - slippageBps) / 10000
+    const minAmount = (amountBigInt * multiplier) / 10000n;
+    return minAmount.toString();
+  } catch {
+    return '0';
+  }
+}
+
+/**
+ * Calculate slippage amount (the difference)
+ *
+ * @param amount - The expected amount
+ * @param slippagePercent - Slippage tolerance as percentage
+ * @returns The slippage amount (amount - minAmount)
+ */
+export function calculateSlippageAmount(amount: string, slippagePercent: number): string {
+  try {
+    const amountBigInt = BigInt(amount);
+    const minAmount = BigInt(applySlippage(amount, slippagePercent));
+    return (amountBigInt - minAmount).toString();
+  } catch {
+    return '0';
+  }
+}

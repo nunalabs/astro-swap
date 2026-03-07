@@ -4,7 +4,7 @@ import { useWalletStore } from '../stores/walletStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useTransactionStore } from '../stores/transactionStore';
 import { getAmountsOut, swapExactTokensForTokens, calculateOptimalPath } from '../lib/contracts';
-import { calculatePriceImpact, parseTokenAmount, formatTokenAmount } from '../lib/utils';
+import { calculatePriceImpact, parseTokenAmount, formatTokenAmount, applySlippage } from '../lib/utils';
 import { formatErrorForToast } from '../lib/errors';
 import { useSwapSimulation } from './useSimulation';
 import type { Token } from '../types';
@@ -94,10 +94,7 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
       const rawAmountIn = quoteData.rawAmountIn;
       // Calculate slippage: multiply by (100 - slippage) / 100
       // Use integer math: multiply by (10000 - slippage*100) / 10000
-      const slippageBps = Math.floor(slippageTolerance * 100);
-      const rawAmountOutMin = (
-        BigInt(quoteData.rawAmountOut) * BigInt(10000 - slippageBps) / 10000n
-      ).toString();
+      const rawAmountOutMin = applySlippage(quoteData.rawAmountOut, slippageTolerance);
       const deadlineTimestamp = Math.floor(Date.now() / 1000) + deadline * 60;
 
       console.log('Executing swap:', {
