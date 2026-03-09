@@ -8,6 +8,7 @@ pub enum DataKey {
     Factory,
     Admin,
     Initialized,
+    Locked, // FIX #M5: Reentrancy lock for multi-hop swap protection
 }
 
 /// Check if the contract is initialized
@@ -55,4 +56,19 @@ pub fn set_admin(env: &Env, admin: &Address) {
 pub fn extend_instance_ttl(env: &Env) {
     let max_ttl = env.storage().max_ttl();
     env.storage().instance().extend_ttl(max_ttl - 1000, max_ttl);
+}
+
+// ==================== Reentrancy Protection (FIX #M5) ====================
+
+/// Check if the contract is locked (reentrancy protection)
+pub fn is_locked(env: &Env) -> bool {
+    env.storage()
+        .instance()
+        .get::<DataKey, bool>(&DataKey::Locked)
+        .unwrap_or(false)
+}
+
+/// Set the reentrancy lock state
+pub fn set_locked(env: &Env, locked: bool) {
+    env.storage().instance().set(&DataKey::Locked, &locked);
 }

@@ -1,13 +1,14 @@
 #![allow(clippy::too_many_arguments)]
 
 use astroswap_shared::{
-    get_amount_in, get_amount_out, AstroSwapError, FactoryClient, PairClient, MIN_TRADE_AMOUNT,
+    get_amount_in, get_amount_out, reentrancy::ReentrancyGuard, AstroSwapError, FactoryClient,
+    PairClient, MIN_TRADE_AMOUNT,
 };
 use soroban_sdk::{contract, contractimpl, token, Address, Env, Vec};
 
 use crate::storage::{
-    extend_instance_ttl, get_admin, get_factory, is_initialized, set_admin, set_factory,
-    set_initialized,
+    extend_instance_ttl, get_admin, get_factory, is_initialized, is_locked, set_admin,
+    set_factory, set_initialized, set_locked,
 };
 
 #[contract]
@@ -69,6 +70,9 @@ impl AstroSwapRouter {
         path: Vec<Address>,
         deadline: u64,
     ) -> Result<Vec<i128>, AstroSwapError> {
+        // FIX #M5: Acquire reentrancy guard for multi-hop swap protection
+        let _guard = ReentrancyGuard::acquire(&env, is_locked, set_locked)?;
+
         // Verify contract is initialized
         Self::require_initialized(&env)?;
 
@@ -130,6 +134,9 @@ impl AstroSwapRouter {
         path: Vec<Address>,
         deadline: u64,
     ) -> Result<Vec<i128>, AstroSwapError> {
+        // FIX #M5: Acquire reentrancy guard for multi-hop swap protection
+        let _guard = ReentrancyGuard::acquire(&env, is_locked, set_locked)?;
+
         // Verify contract is initialized
         Self::require_initialized(&env)?;
 
