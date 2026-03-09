@@ -4,9 +4,10 @@ use soroban_sdk::{contract, contractimpl, xdr::ToXdr, Address, Bytes, BytesN, En
 use crate::storage::{
     add_pair_to_list, extend_instance_ttl, get_admin, get_fee_recipient, get_launchpad, get_pair,
     get_pair_by_index, get_pair_wasm_hash, get_pairs_count, get_protocol_fee_bps,
-    increment_pairs_count, is_initialized, is_paused, is_token_graduated, set_admin,
-    set_fee_recipient, set_graduated_token, set_initialized, set_launchpad, set_pair,
-    set_pair_wasm_hash, set_paused, set_protocol_fee_bps, sort_tokens, GraduatedTokenInfo,
+    increment_pairs_count, is_initialized, is_paused, is_public_pair_creation_enabled,
+    is_token_graduated, set_admin, set_fee_recipient, set_graduated_token, set_initialized,
+    set_launchpad, set_pair, set_pair_wasm_hash, set_paused, set_protocol_fee_bps,
+    set_public_pair_creation, sort_tokens, GraduatedTokenInfo,
 };
 
 #[contract]
@@ -65,12 +66,26 @@ impl AstroSwapFactory {
 
     /// Create a new trading pair
     /// Returns the address of the new pair contract
+    ///
+    /// # Access Control
+    /// If public_pair_creation is disabled (default), only admin can create pairs.
+    /// This prevents spam attacks. Admin can enable public creation later if desired.
     pub fn create_pair(
         env: Env,
+        caller: Address,
         token_a: Address,
         token_b: Address,
     ) -> Result<Address, AstroSwapError> {
         Self::require_not_paused(&env)?;
+
+        // Check if public pair creation is enabled
+        if !is_public_pair_creation_enabled(&env) {
+            // Only admin can create pairs when public creation is disabled
+            Self::require_admin(&env, &caller)?;
+        } else {
+            // Public creation enabled - still require auth from caller
+            caller.require_auth();
+        }
 
         // Tokens must be different
         if token_a == token_b {
@@ -261,6 +276,22 @@ impl AstroSwapFactory {
         Ok(())
     }
 
+    /// Enable or disable public pair creation
+    /// Only admin can call
+    ///
+    /// When disabled (default), only admin can create pairs (prevents spam).
+    /// When enabled, anyone can create pairs (more permissionless but riskier).
+    pub fn set_public_pair_creation(
+        env: Env,
+        caller: Address,
+        enabled: bool,
+    ) -> Result<(), AstroSwapError> {
+        Self::require_admin(&env, &caller)?;
+        set_public_pair_creation(&env, enabled);
+        extend_instance_ttl(&env);
+        Ok(())
+    }
+
     // ==================== Astro-Shiba Integration ====================
 
     /// Register a graduated token from Astro-Shiba launchpad
@@ -316,8 +347,8 @@ impl AstroSwapFactory {
             return Err(AstroSwapError::TokenNotGraduated);
         }
 
-        // Create the pair
-        Self::create_pair(env, token, quote_token)
+        // Create the pair (launchpad is authorized to create graduated pairs)
+        Self::create_pair(env, caller, token, quote_token)
     }
 
     // ==================== View Functions ====================
@@ -355,6 +386,11 @@ impl AstroSwapFactory {
     /// Check if a token has graduated from Astro-Shiba
     pub fn is_graduated(env: Env, token: Address) -> bool {
         is_token_graduated(&env, &token)
+    }
+
+    /// Check if public pair creation is enabled
+    pub fn is_public_pair_creation_enabled(env: Env) -> bool {
+        is_public_pair_creation_enabled(&env)
     }
 
     // ==================== Internal Functions ====================

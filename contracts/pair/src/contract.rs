@@ -1,8 +1,9 @@
 use astroswap_shared::{
     calculate_k, calculate_liquidity_tokens, calculate_withdrawal_amounts, emit_deposit, emit_swap,
-    emit_withdraw, get_amount_in, get_amount_out, reentrancy::ReentrancyGuard, safe_sub,
-    update_reserves_add, update_reserves_sub, update_reserves_swap, verify_k_invariant,
-    AstroSwapError, PairInfo, DEFAULT_SWAP_FEE_BPS, MINIMUM_LIQUIDITY, MIN_TRADE_AMOUNT,
+    emit_withdraw, get_amount_in, get_amount_out, reentrancy::ReentrancyGuard, safe_add, safe_div,
+    safe_mul, safe_sub, sqrt, update_reserves_add, update_reserves_sub, update_reserves_swap,
+    verify_k_invariant, AstroSwapError, FactoryClient, PairInfo, DEFAULT_SWAP_FEE_BPS,
+    MINIMUM_LIQUIDITY, MIN_TRADE_AMOUNT,
 };
 use soroban_sdk::{contract, contractimpl, token, Address, Env, String};
 
@@ -106,6 +107,61 @@ impl AstroSwapPair {
         Ok(())
     }
 
+    /// Mint protocol fee as LP tokens (Uniswap V2 pattern)
+    ///
+    /// This function implements protocol fee extraction by minting LP tokens
+    /// to the fee recipient proportional to the growth in k (liquidity).
+    ///
+    /// Formula: liquidity = (√k - √k_last) * totalSupply / (5 * √k + √k_last)
+    /// This results in ~1/6 of growth going to protocol, achieving 0.05% effective fee
+    ///
+    /// # Returns
+    /// * true if fee was minted, false if no fee recipient or no growth
+    fn mint_protocol_fee(env: &Env, reserve_0: i128, reserve_1: i128) -> Result<bool, AstroSwapError> {
+        let factory = get_factory(env)?;
+        let factory_client = FactoryClient::new(env, &factory);
+
+        // Get fee recipient from factory (protocol treasury)
+        let fee_to = match factory_client.fee_to() {
+            Some(addr) => addr,
+            None => return Ok(false), // No fee recipient configured
+        };
+
+        let k_last = get_k_last(env);
+        if k_last == 0 {
+            return Ok(false); // First interaction, no fees to collect
+        }
+
+        // Calculate current k
+        let k = calculate_k(reserve_0, reserve_1)?;
+
+        if k > k_last {
+            // Calculate growth in liquidity
+            let root_k = sqrt(k);
+            let root_k_last = sqrt(k_last);
+            let total_supply = get_total_supply(env);
+
+            if total_supply > 0 {
+                // numerator = (√k - √k_last) * totalSupply
+                let numerator = safe_mul(safe_sub(root_k, root_k_last)?, total_supply)?;
+
+                // denominator = 5 * √k + √k_last
+                let denominator = safe_add(safe_mul(5, root_k)?, root_k_last)?;
+
+                // liquidity = numerator / denominator
+                let liquidity = safe_div(numerator, denominator)?;
+
+                if liquidity > 0 {
+                    // Mint LP tokens to fee recipient
+                    lp_token::mint(env, &fee_to, liquidity)?;
+                    return Ok(true);
+                }
+            }
+        }
+
+        Ok(false)
+    }
+
     // ==================== Admin Functions ====================
 
     /// Pause or unpause the pair contract
@@ -205,6 +261,14 @@ impl AstroSwapPair {
         token_0_client.transfer(&user, env.current_contract_address(), &amount_0);
         token_1_client.transfer(&user, env.current_contract_address(), &amount_1);
 
+        // Calculate new reserves for protocol fee calculation
+        let (new_reserve_0, new_reserve_1) =
+            update_reserves_add(reserve_0, reserve_1, amount_0, amount_1)?;
+
+        // Mint protocol fee BEFORE minting user LP tokens
+        // This ensures fee calculation uses correct total_supply
+        Self::mint_protocol_fee(&env, new_reserve_0, new_reserve_1)?;
+
         // Mint LP tokens
         if total_supply == 0 {
             // Lock minimum liquidity forever to prevent attacks
@@ -213,8 +277,6 @@ impl AstroSwapPair {
         lp_token::mint(&env, &user, shares)?;
 
         // Update reserves (with overflow protection)
-        let (new_reserve_0, new_reserve_1) =
-            update_reserves_add(reserve_0, reserve_1, amount_0, amount_1)?;
         set_reserves(&env, new_reserve_0, new_reserve_1);
 
         // Update k_last for protocol fee (with overflow protection)
@@ -293,6 +355,14 @@ impl AstroSwapPair {
             return Err(AstroSwapError::MinimumNotMet);
         }
 
+        // Calculate new reserves for protocol fee calculation
+        let (new_reserve_0, new_reserve_1) =
+            update_reserves_sub(reserve_0, reserve_1, amount_0, amount_1)?;
+
+        // Mint protocol fee BEFORE burning user LP tokens
+        // This ensures fee calculation uses correct total_supply
+        Self::mint_protocol_fee(&env, new_reserve_0, new_reserve_1)?;
+
         // Burn LP tokens
         lp_token::burn(&env, &user, shares)?;
 
@@ -307,8 +377,6 @@ impl AstroSwapPair {
         token_1_client.transfer(&env.current_contract_address(), &user, &amount_1);
 
         // Update reserves (with underflow protection)
-        let (new_reserve_0, new_reserve_1) =
-            update_reserves_sub(reserve_0, reserve_1, amount_0, amount_1)?;
         set_reserves(&env, new_reserve_0, new_reserve_1);
 
         // Update k_last (with overflow protection)

@@ -72,6 +72,15 @@ impl<'a> FactoryClient<'a> {
             Vec::new(self.env),
         )
     }
+
+    /// Get fee recipient address (protocol treasury)
+    pub fn fee_to(&self) -> Option<Address> {
+        self.env.invoke_contract(
+            &self.contract_id,
+            &Symbol::new(self.env, "fee_to"),
+            Vec::new(self.env),
+        )
+    }
 }
 
 /// Pair contract interface

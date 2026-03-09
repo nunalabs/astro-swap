@@ -233,3 +233,13 @@ pub fn extend_balance_ttl(env: &Env, address: &Address) {
         max_ttl,
     );
 }
+
+/// Extend TTL for an allowance
+pub fn extend_allowance_ttl(env: &Env, owner: &Address, spender: &Address) {
+    let max_ttl = env.storage().max_ttl();
+    env.storage().persistent().extend_ttl(
+        &DataKey::Allowance(owner.clone(), spender.clone()),
+        max_ttl - 1000,
+        max_ttl,
+    );
+}

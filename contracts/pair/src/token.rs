@@ -7,8 +7,8 @@ use astroswap_shared::AstroSwapError;
 use soroban_sdk::{contractevent, Address, Env, String};
 
 use crate::storage::{
-    extend_balance_ttl, get_allowance, get_balance, get_total_supply, set_allowance, set_balance,
-    set_total_supply,
+    extend_allowance_ttl, extend_balance_ttl, get_allowance, get_balance, get_total_supply,
+    set_allowance, set_balance, set_total_supply,
 };
 
 /// LP Token name prefix
@@ -163,9 +163,10 @@ pub fn transfer_from(
     set_balance(env, from, from_balance - amount);
     set_balance(env, to, get_balance(env, to) + amount);
 
-    // Extend TTL
+    // Extend TTL for balances and allowance
     extend_balance_ttl(env, from);
     extend_balance_ttl(env, to);
+    extend_allowance_ttl(env, from, spender);
 
     // Emit transfer event
     Transfer {
@@ -192,6 +193,9 @@ pub fn approve(
     }
 
     set_allowance(env, owner, spender, amount);
+
+    // Extend TTL for the allowance
+    extend_allowance_ttl(env, owner, spender);
 
     // Emit approval event
     Approval {
@@ -280,6 +284,9 @@ pub fn burn_from(
 
     // Update allowance
     set_allowance(env, from, spender, current_allowance - amount);
+
+    // Extend TTL for allowance
+    extend_allowance_ttl(env, from, spender);
 
     // Burn the tokens
     burn(env, from, amount)

@@ -14,6 +14,7 @@ pub enum DataKey {
     Paused,
     PairsCount,
     LaunchpadAddress,
+    PublicPairCreation, // Allow anyone to create pairs (true) or only admin (false)
 
     // Persistent storage (unbounded)
     Pair(Address, Address),
@@ -133,6 +134,21 @@ pub fn set_launchpad(env: &Env, launchpad: &Address) {
         .set(&DataKey::LaunchpadAddress, launchpad);
 }
 
+/// Check if public pair creation is enabled
+pub fn is_public_pair_creation_enabled(env: &Env) -> bool {
+    env.storage()
+        .instance()
+        .get::<DataKey, bool>(&DataKey::PublicPairCreation)
+        .unwrap_or(false) // Default: only admin can create pairs
+}
+
+/// Set public pair creation flag
+pub fn set_public_pair_creation(env: &Env, enabled: bool) {
+    env.storage()
+        .instance()
+        .set(&DataKey::PublicPairCreation, &enabled);
+}
+
 /// Sort two token addresses to ensure consistent ordering
 pub fn sort_tokens(token_a: &Address, token_b: &Address) -> (Address, Address) {
     if token_a < token_b {
@@ -145,31 +161,59 @@ pub fn sort_tokens(token_a: &Address, token_b: &Address) -> (Address, Address) {
 /// Get pair address for two tokens
 pub fn get_pair(env: &Env, token_a: &Address, token_b: &Address) -> Option<Address> {
     let (token_0, token_1) = sort_tokens(token_a, token_b);
-    env.storage()
+    let key = DataKey::Pair(token_0, token_1);
+
+    let result = env.storage()
         .persistent()
-        .get::<DataKey, Address>(&DataKey::Pair(token_0, token_1))
+        .get::<DataKey, Address>(&key);
+
+    // Extend TTL if pair exists
+    if result.is_some() {
+        extend_persistent_ttl(env, &key);
+    }
+
+    result
 }
 
 /// Set pair address for two tokens
 pub fn set_pair(env: &Env, token_a: &Address, token_b: &Address, pair: &Address) {
     let (token_0, token_1) = sort_tokens(token_a, token_b);
+    let key = DataKey::Pair(token_0, token_1);
+
     env.storage()
         .persistent()
-        .set(&DataKey::Pair(token_0, token_1), pair);
+        .set(&key, pair);
+
+    // Extend TTL for newly created pair
+    extend_persistent_ttl(env, &key);
 }
 
 /// Get pair by index
 pub fn get_pair_by_index(env: &Env, index: u32) -> Option<Address> {
-    env.storage()
+    let key = DataKey::AllPairs(index);
+
+    let result = env.storage()
         .persistent()
-        .get::<DataKey, Address>(&DataKey::AllPairs(index))
+        .get::<DataKey, Address>(&key);
+
+    // Extend TTL if pair exists
+    if result.is_some() {
+        extend_persistent_ttl(env, &key);
+    }
+
+    result
 }
 
 /// Add pair to index list
 pub fn add_pair_to_list(env: &Env, pair: &Address, index: u32) {
+    let key = DataKey::AllPairs(index);
+
     env.storage()
         .persistent()
-        .set(&DataKey::AllPairs(index), pair);
+        .set(&key, pair);
+
+    // Extend TTL for newly added pair index
+    extend_persistent_ttl(env, &key);
 }
 
 /// Information about a graduated token
@@ -184,24 +228,44 @@ pub struct GraduatedTokenInfo {
 
 /// Check if a token has graduated
 pub fn is_token_graduated(env: &Env, token: &Address) -> bool {
-    env.storage()
-        .persistent()
-        .has(&DataKey::GraduatedToken(token.clone()))
+    let key = DataKey::GraduatedToken(token.clone());
+    let exists = env.storage().persistent().has(&key);
+
+    // Extend TTL if token exists
+    if exists {
+        extend_persistent_ttl(env, &key);
+    }
+
+    exists
 }
 
 /// Get graduated token info
 #[allow(dead_code)]
 pub fn get_graduated_token(env: &Env, token: &Address) -> Option<GraduatedTokenInfo> {
-    env.storage()
+    let key = DataKey::GraduatedToken(token.clone());
+
+    let result = env.storage()
         .persistent()
-        .get::<DataKey, GraduatedTokenInfo>(&DataKey::GraduatedToken(token.clone()))
+        .get::<DataKey, GraduatedTokenInfo>(&key);
+
+    // Extend TTL if token exists
+    if result.is_some() {
+        extend_persistent_ttl(env, &key);
+    }
+
+    result
 }
 
 /// Set graduated token info
 pub fn set_graduated_token(env: &Env, token: &Address, info: &GraduatedTokenInfo) {
+    let key = DataKey::GraduatedToken(token.clone());
+
     env.storage()
         .persistent()
-        .set(&DataKey::GraduatedToken(token.clone()), info);
+        .set(&key, info);
+
+    // Extend TTL for newly graduated token
+    extend_persistent_ttl(env, &key);
 }
 
 /// Extend TTL for instance storage
