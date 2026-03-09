@@ -1,9 +1,15 @@
 import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
+import { Pool, neonConfig } from '@neondatabase/serverless';
+import { PrismaNeon } from '@prisma/adapter-neon';
+import ws from 'ws';
 import { logger } from './logger';
 import { EventListener } from './listener';
 import { APIServer } from './api';
 import type { IndexerConfig } from './types';
+
+// Configure Neon to use WebSocket for serverless
+neonConfig.webSocketConstructor = ws;
 
 // Load environment variables
 dotenv.config();
@@ -76,7 +82,12 @@ class IndexerApp {
   private apiServer: APIServer;
 
   constructor() {
+    // Use Neon serverless adapter for WebSocket connection
+    const pool = new Pool({ connectionString: config.database.url });
+    const adapter = new PrismaNeon(pool);
+
     this.prisma = new PrismaClient({
+      adapter,
       log: config.logging.level === 'debug' ? ['query', 'error', 'warn'] : ['error'],
     });
 

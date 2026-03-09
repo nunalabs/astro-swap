@@ -175,7 +175,7 @@ impl TestContext {
         // Create pair (returns Address directly)
         let pair_address = self
             .factory
-            .create_pair(token_a, token_b);
+            .create_pair(&self.admin, token_a, token_b);
 
         // Add liquidity via router (returns tuple directly)
         let (_amount_a, _amount_b, _liquidity) = self

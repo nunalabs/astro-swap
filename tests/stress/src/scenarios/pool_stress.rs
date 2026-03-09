@@ -69,7 +69,7 @@ impl PoolStressScenario {
                 .unwrap();
 
             // SDK 23: client method returns Address directly
-            let pair_addr = factory.create_pair(&token_a_addr, &token_b_addr);
+            let pair_addr = factory.create_pair(&admin, &token_a_addr, &token_b_addr);
             pair_addresses.push(pair_addr);
         }
 

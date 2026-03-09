@@ -24,6 +24,8 @@
   "author": "AstroSwap",
   "license": "MIT",
   "dependencies": {
+    "@neondatabase/serverless": "^0.10.0",
+    "@prisma/adapter-neon": "^5.22.0",
     "@prisma/client": "^5.22.0",
     "@sentry/node": "^10.28.0",
     "@stellar/stellar-sdk": "^13.0.0",

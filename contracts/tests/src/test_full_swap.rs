@@ -18,7 +18,7 @@ fn test_full_swap_flow() {
     // Step 1: Create pair (returns Address directly)
     let pair_address = ctx
         .factory
-        .create_pair(&ctx.token_a_address, &ctx.token_b_address);
+        .create_pair(&ctx.admin, &ctx.token_a_address, &ctx.token_b_address);
 
     assert!(pair_address != ctx.token_a_address);
     assert!(pair_address != ctx.token_b_address);
@@ -252,12 +252,12 @@ fn test_cannot_create_duplicate_pair() {
     // Create first pair (returns Address directly)
     let pair1 = ctx
         .factory
-        .create_pair(&ctx.token_a_address, &ctx.token_b_address);
+        .create_pair(&ctx.admin, &ctx.token_a_address, &ctx.token_b_address);
 
     // Try to create duplicate (should fail - use try_ for error testing)
     let result = ctx
         .factory
-        .try_create_pair(&ctx.token_a_address, &ctx.token_b_address);
+        .try_create_pair(&ctx.admin, &ctx.token_a_address, &ctx.token_b_address);
 
     assert!(result.is_err(), "Should not allow duplicate pairs");
 
@@ -358,7 +358,7 @@ fn test_minimum_liquidity_lock() {
     // Create pair (returns Address directly)
     let pair_address = ctx
         .factory
-        .create_pair(&ctx.token_a_address, &ctx.token_b_address);
+        .create_pair(&ctx.admin, &ctx.token_a_address, &ctx.token_b_address);
 
     let pair_client = PairClient::new(&ctx.env, &pair_address);
 

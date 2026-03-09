@@ -165,7 +165,7 @@ impl AstroSwapBridge {
 
         // Step 1: Create trading pair via factory
         let factory_client = FactoryClient::new(&env, &factory);
-        let pair_address = factory_client.create_pair(&token, &quote_token)?;
+        let pair_address = factory_client.create_pair(&caller, &token, &quote_token)?;
 
         // SECURITY: Verify pair was created successfully by checking it exists in factory
         // This prevents potential issues if create_pair silently fails or returns wrong address

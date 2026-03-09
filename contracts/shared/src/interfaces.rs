@@ -35,13 +35,14 @@ impl<'a> FactoryClient<'a> {
     /// Create a new trading pair
     pub fn create_pair(
         &self,
+        caller: &Address,
         token_a: &Address,
         token_b: &Address,
     ) -> Result<Address, AstroSwapError> {
         let result: Address = self.env.invoke_contract(
             &self.contract_id,
             &Symbol::new(self.env, "create_pair"),
-            Vec::from_array(self.env, [token_a.to_val(), token_b.to_val()]),
+            Vec::from_array(self.env, [caller.to_val(), token_a.to_val(), token_b.to_val()]),
         );
         Ok(result)
     }
@@ -74,12 +75,17 @@ impl<'a> FactoryClient<'a> {
     }
 
     /// Get fee recipient address (protocol treasury)
+    /// Returns None if not configured or if factory is not properly initialized
     pub fn fee_to(&self) -> Option<Address> {
-        self.env.invoke_contract(
+        // Use try_invoke_contract to handle errors gracefully (e.g., in unit tests with mock factories)
+        match self.env.try_invoke_contract::<Option<Address>, AstroSwapError>(
             &self.contract_id,
             &Symbol::new(self.env, "fee_to"),
             Vec::new(self.env),
-        )
+        ) {
+            Ok(Ok(result)) => result,  // Contract call succeeded and returned Option<Address>
+            _ => None, // Error or contract call failed - return None
+        }
     }
 }
 

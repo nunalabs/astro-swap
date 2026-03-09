@@ -75,7 +75,7 @@ impl SwapLoadScenario {
                 .unwrap();
 
             // Create pair (SDK 23: client method returns Address directly, use try_create_pair for Result)
-            let pair_addr = factory.create_pair(&token_a_addr, &token_b_addr);
+            let pair_addr = factory.create_pair(&admin, &token_a_addr, &token_b_addr);
             pair_addresses.push(pair_addr.clone());
 
             // Add initial liquidity (SDK 23: i128 params need references)

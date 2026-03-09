@@ -1,7 +1,7 @@
 # Soroban WASM compilation configuration
 [target.wasm32-unknown-unknown]
 rustflags = [
-    "-C", "target-feature=-reference-types,-multivalue"
+    "-C", "target-feature=-reference-types,-multivalue,-bulk-memory,-sign-ext,-mutable-globals"
 ]
 
 # Note: Do NOT set default build target here as it breaks tests

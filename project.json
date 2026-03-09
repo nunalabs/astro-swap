@@ -1,0 +1,133 @@
+{
+  "name": "astro-swap",
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "astro-swap",
+  "tags": ["typescript", "vite", "rust", "dex", "consumer"],
+  "implicitDependencies": ["astro-core"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "make build"
+        ],
+        "cwd": "astro-swap",
+        "parallel": false
+      },
+      "dependsOn": ["^build"],
+      "outputs": [
+        "{projectRoot}/frontend/dist",
+        "{projectRoot}/sdk/dist",
+        "{projectRoot}/contracts/*/target/wasm32-unknown-unknown/release"
+      ],
+      "cache": true
+    },
+    "build-contracts": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "make build-contracts",
+        "cwd": "astro-swap"
+      },
+      "outputs": ["{projectRoot}/contracts/*/target/wasm32-unknown-unknown/release"],
+      "cache": true
+    },
+    "build-frontend": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cd frontend && pnpm build",
+        "cwd": "astro-swap"
+      },
+      "dependsOn": ["build-contracts"],
+      "outputs": ["{projectRoot}/frontend/dist"],
+      "cache": true
+    },
+    "build-sdk": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "make sdk-build",
+        "cwd": "astro-swap"
+      },
+      "outputs": ["{projectRoot}/sdk/dist"],
+      "cache": true
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cd frontend && pnpm dev",
+        "cwd": "astro-swap"
+      },
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "make test",
+        "cwd": "astro-swap"
+      },
+      "cache": true
+    },
+    "test-contracts": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo test --workspace",
+        "cwd": "astro-swap/contracts"
+      },
+      "cache": true
+    },
+    "test-frontend": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cd frontend && pnpm test",
+        "cwd": "astro-swap"
+      },
+      "cache": true
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "make lint",
+        "cwd": "astro-swap"
+      },
+      "cache": true
+    },
+    "lint-frontend": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cd frontend && pnpm lint",
+        "cwd": "astro-swap"
+      },
+      "cache": true
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cd frontend && pnpm typecheck",
+        "cwd": "astro-swap"
+      },
+      "cache": true
+    },
+    "fmt": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "make fmt",
+        "cwd": "astro-swap"
+      }
+    },
+    "bindings": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "make bindings",
+        "cwd": "astro-swap"
+      },
+      "dependsOn": ["build-contracts"]
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "make clean",
+        "cwd": "astro-swap"
+      }
+    }
+  }
+}

@@ -219,7 +219,7 @@ impl AstroSwapRouter {
         // Get or create pair
         let pair_address = match factory_client.get_pair(&token_a, &token_b) {
             Some(addr) => addr,
-            None => factory_client.create_pair(&token_a, &token_b)?,
+            None => factory_client.create_pair(&user, &token_a, &token_b)?,
         };
 
         // Call pair's deposit function
@@ -555,28 +555,39 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register(AstroSwapRouter, ());
-        let client = AstroSwapRouterClient::new(&env, &contract_id);
-
         let factory = Address::generate(&env);
         let admin = Address::generate(&env);
 
-        client.initialize(&factory, &admin);
+        // Constructor runs atomically with registration (CAP-58)
+        let contract_id = env.register(
+            AstroSwapRouter,
+            (factory.clone(), admin.clone()),
+        );
+        let client = AstroSwapRouterClient::new(&env, &contract_id);
 
         // View functions now return Result, the client auto-unwraps
         assert_eq!(client.factory(), factory);
         assert_eq!(client.admin(), admin);
     }
 
-    #[test]
-    fn test_uninitialized_contract_returns_error() {
-        let env = Env::default();
 
-        let contract_id = env.register(AstroSwapRouter, ());
+    #[test]
+    fn test_constructor_initializes_router() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let factory = Address::generate(&env);
+        let admin = Address::generate(&env);
+
+        // Constructor runs atomically with registration
+        let contract_id = env.register(
+            AstroSwapRouter,
+            (factory.clone(), admin.clone()),
+        );
         let client = AstroSwapRouterClient::new(&env, &contract_id);
 
-        // View functions should return NotInitialized error
-        assert!(client.try_factory().is_err());
-        assert!(client.try_admin().is_err());
+        // Verify state is initialized correctly
+        assert_eq!(client.factory(), factory);
+        assert_eq!(client.admin(), admin);
     }
 }

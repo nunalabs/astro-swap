@@ -70,7 +70,7 @@ impl RouterPathsScenario {
             let token_b = token_manager.get((i + 1) as usize).unwrap();
 
             // SDK 23: client method returns Address directly
-            factory.create_pair(&token_a.address, &token_b.address);
+            factory.create_pair(&admin, &token_a.address, &token_b.address);
 
             // Add liquidity (SDK 23: i128 params need references)
             let _ = router.add_liquidity(
