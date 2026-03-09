@@ -121,6 +121,13 @@ impl TestContext {
         );
         let bridge = astroswap_bridge::AstroSwapBridgeClient::new(&env, &bridge_address);
 
+        // Configure factory to allow launchpad to create pairs for graduated tokens
+        factory.set_launchpad(&admin, &bridge_address);
+
+        // Enable public pair creation so bridge can create pairs during graduation
+        // In production, this might be enabled or bridge would use admin delegation
+        factory.set_public_pair_creation(&admin, &true);
+
         Self {
             env,
             admin,
