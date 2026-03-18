@@ -8,19 +8,19 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Polyfill buffer for Stellar SDK 14.x
+      buffer: 'buffer',
     },
   },
   define: {
     // Polyfill global for browser compatibility (required by Stellar Wallet Kit)
     global: 'globalThis',
+    // Polyfill Buffer for Stellar SDK 14.x
+    'process.env': {},
   },
   optimizeDeps: {
-    esbuildOptions: {
-      // Node.js global to browser globalThis
-      define: {
-        global: 'globalThis',
-      },
-    },
+    include: ['buffer'],
+    // Rolldown handles polyfills automatically
   },
   server: {
     port: parseInt(process.env.VITE_PORT || '3001'),
@@ -29,12 +29,20 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'stellar-vendor': ['@stellar/stellar-sdk'],
-          'ui-vendor': ['framer-motion', 'recharts'],
+        manualChunks: (id) => {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
+              return 'react-vendor';
+            }
+            if (id.includes('@stellar/stellar-sdk')) {
+              return 'stellar-vendor';
+            }
+            if (id.includes('framer-motion') || id.includes('recharts')) {
+              return 'ui-vendor';
+            }
+          }
         },
       },
     },
