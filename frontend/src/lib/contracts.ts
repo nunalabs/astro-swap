@@ -533,7 +533,76 @@ export async function removeLiquidity(
 }
 
 /**
+ * Staking Contract - Get pool count
+ */
+export async function getStakingPoolCount(sourceAddress: string): Promise<number> {
+  try {
+    const result = await callContract(
+      CONTRACTS.STAKING,
+      'pool_count',
+      [],
+      sourceAddress
+    );
+    return Number(result);
+  } catch (error) {
+    console.error('Error getting staking pool count:', error);
+    return 0;
+  }
+}
+
+/**
+ * Staking Contract - Get pool info
+ */
+export async function getStakingPoolInfo(
+  poolId: number,
+  sourceAddress: string
+): Promise<any | null> {
+  try {
+    const poolIdScVal = StellarSdk.nativeToScVal(poolId, { type: 'u32' });
+
+    const result = await callContract(
+      CONTRACTS.STAKING,
+      'pool_info',
+      [poolIdScVal],
+      sourceAddress
+    );
+
+    return result;
+  } catch (error) {
+    console.error(`Error getting staking pool info for pool ${poolId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Staking Contract - Get pending rewards for user
+ */
+export async function getPendingRewards(
+  poolId: number,
+  userAddress: string,
+  sourceAddress: string
+): Promise<string> {
+  try {
+    const userScVal = StellarSdk.nativeToScVal(userAddress, { type: 'address' });
+    const poolIdScVal = StellarSdk.nativeToScVal(poolId, { type: 'u32' });
+
+    const result = await callContract(
+      CONTRACTS.STAKING,
+      'pending_rewards',
+      [userScVal, poolIdScVal],
+      sourceAddress
+    );
+
+    return String(result);
+  } catch (error) {
+    console.error('Error getting pending rewards:', error);
+    return '0';
+  }
+}
+
+/**
  * Staking Contract - Stake LP tokens
+ * Contract signature: stake(user: Address, pool_id: u32, amount: i128)
  */
 export async function stake(
   poolId: string,
@@ -545,6 +614,7 @@ export async function stake(
 
     const operation = contract.call(
       'stake',
+      StellarSdk.nativeToScVal(sourceAddress, { type: 'address' }), // user parameter
       StellarSdk.nativeToScVal(Number(poolId), { type: 'u32' }),
       StellarSdk.nativeToScVal(amount, { type: 'i128' })
     );
@@ -559,6 +629,7 @@ export async function stake(
 
 /**
  * Staking Contract - Unstake LP tokens
+ * Contract signature: unstake(user: Address, pool_id: u32, amount: i128)
  */
 export async function unstake(
   poolId: string,
@@ -570,6 +641,7 @@ export async function unstake(
 
     const operation = contract.call(
       'unstake',
+      StellarSdk.nativeToScVal(sourceAddress, { type: 'address' }), // user parameter
       StellarSdk.nativeToScVal(Number(poolId), { type: 'u32' }),
       StellarSdk.nativeToScVal(amount, { type: 'i128' })
     );
@@ -584,6 +656,7 @@ export async function unstake(
 
 /**
  * Staking Contract - Claim rewards
+ * Contract signature: claim_rewards(user: Address, pool_id: u32)
  */
 export async function claimRewards(
   poolId: string,
@@ -594,6 +667,7 @@ export async function claimRewards(
 
     const operation = contract.call(
       'claim_rewards',
+      StellarSdk.nativeToScVal(sourceAddress, { type: 'address' }), // user parameter
       StellarSdk.nativeToScVal(Number(poolId), { type: 'u32' })
     );
 
@@ -607,6 +681,7 @@ export async function claimRewards(
 
 /**
  * Staking Contract - Get user stake info
+ * Contract signature: user_info(user: Address, pool_id: u32)
  */
 export async function getUserStakeInfo(
   poolId: string,
@@ -614,13 +689,13 @@ export async function getUserStakeInfo(
   sourceAddress: string
 ): Promise<{ staked: string; rewards: string } | null> {
   try {
-    const poolIdScVal = StellarSdk.nativeToScVal(Number(poolId), { type: 'u32' });
     const userScVal = StellarSdk.nativeToScVal(userAddress, { type: 'address' });
+    const poolIdScVal = StellarSdk.nativeToScVal(Number(poolId), { type: 'u32' });
 
     const result = await callContract(
       CONTRACTS.STAKING,
-      'get_user_info',
-      [poolIdScVal, userScVal],
+      'user_info',
+      [userScVal, poolIdScVal], // Fixed: user first, then pool_id
       sourceAddress
     );
 

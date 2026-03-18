@@ -23,16 +23,21 @@ export const StakingCard = memo(function StakingCard({ pool }: StakingCardProps)
   const closeUnstakeModal = useCallback(() => setShowUnstakeModal(false), []);
 
   const handleStake = useCallback(() => {
-    stake({ amount: stakeAmount });
+    stake({ amount: stakeAmount, lpTokenAddress: pool.lpToken.address });
     setStakeAmount('');
     setShowStakeModal(false);
-  }, [stake, stakeAmount]);
+  }, [stake, stakeAmount, pool.lpToken.address]);
 
   const handleUnstake = useCallback(() => {
     unstake({ amount: unstakeAmount });
     setUnstakeAmount('');
     setShowUnstakeModal(false);
   }, [unstake, unstakeAmount]);
+
+  // FIX: Wrap claimRewards in useCallback to prevent stale closure
+  const handleClaimRewards = useCallback(() => {
+    claimRewards();
+  }, [claimRewards]);
 
   return (
     <>
@@ -80,7 +85,7 @@ export const StakingCard = memo(function StakingCard({ pool }: StakingCardProps)
         </div>
 
         {stakeInfo && parseFloat(stakeInfo.rewards) > 0 && (
-          <Button onClick={() => claimRewards()} variant="outline" size="sm" fullWidth isLoading={isClaiming}>
+          <Button onClick={handleClaimRewards} variant="outline" size="sm" fullWidth isLoading={isClaiming}>
             Claim Rewards
           </Button>
         )}
