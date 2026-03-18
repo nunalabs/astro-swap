@@ -104,32 +104,23 @@ export const useWalletStore = create<WalletState>()(
       onRehydrateStorage: () => (state) => {
         // M-2: Validate wallet persistence integrity
         if (state?.isConnected && state?.address) {
-          // Verify wallet is actually available in wallet kit
+          // Validate required fields exist
+          if (!state.walletId) {
+            // No walletId but isConnected - invalid state
+            console.warn('Invalid wallet state: connected but no walletId');
+            state.disconnect();
+            return;
+          }
+
           try {
-            if (state.walletId) {
-              // Check if wallet still exists in wallet kit
-              const wallet = walletKit.getWallet(state.walletId);
+            // Attempt to restore wallet connection
+            walletKit.setWallet(state.walletId);
 
-              if (!wallet) {
-                // Wallet no longer available, clear stale state
-                console.warn('Wallet no longer available, clearing stale connection');
-                state.disconnect();
-                return;
-              }
-
-              // Re-set the wallet in the kit
-              walletKit.setWallet(state.walletId);
-
-              // Update balance in background
-              state.updateBalance();
-            } else {
-              // No walletId but isConnected - invalid state
-              console.warn('Invalid wallet state: connected but no walletId');
-              state.disconnect();
-            }
+            // Update balance in background
+            state.updateBalance();
           } catch (error) {
-            // Error checking wallet, clear stale state
-            console.error('Error validating wallet state:', error);
+            // Error restoring wallet connection, clear stale state
+            console.warn('Error restoring wallet connection, clearing stale state:', error);
             state.disconnect();
           }
         }
