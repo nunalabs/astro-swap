@@ -14,6 +14,7 @@ import {
 import { getPairTokens, fetchTokenMetadata } from '../lib/token-indexer';
 import { parseTokenAmount, applySlippage } from '../lib/utils';
 import { HORIZON_SYNC_DELAY } from '../lib/constants';
+import { isReplayTransaction } from '../lib/tx-replay-guard';
 import type { Pool, Token } from '../types';
 
 export function usePool() {
@@ -170,6 +171,16 @@ export function usePool() {
       const rawAmountA = parseTokenAmount(amountA, tokenA.decimals);
       const rawAmountB = parseTokenAmount(amountB, tokenB.decimals);
 
+      // W3-1: Check for replay transaction
+      if (isReplayTransaction('addLiquidity', address, {
+        tokenA: tokenA.address,
+        tokenB: tokenB.address,
+        amountA: rawAmountA,
+        amountB: rawAmountB,
+      })) {
+        throw new Error('Duplicate transaction detected. Please wait before retrying.');
+      }
+
       console.log('💰 Raw amounts calculated:', { rawAmountA, rawAmountB });
 
       // 🔥 FIX: Check if this is first liquidity before calculating minimums
@@ -293,6 +304,15 @@ export function usePool() {
       if (!address) throw new Error('Wallet not connected');
 
       const rawLiquidity = parseTokenAmount(liquidity, 7);
+
+      // W3-1: Check for replay transaction
+      if (isReplayTransaction('removeLiquidity', address, {
+        tokenA: tokenA.address,
+        tokenB: tokenB.address,
+        liquidity: rawLiquidity,
+      })) {
+        throw new Error('Duplicate transaction detected. Please wait before retrying.');
+      }
 
       let amountAMin = '0';
       let amountBMin = '0';

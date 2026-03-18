@@ -9,6 +9,7 @@ import { formatErrorForToast } from '../lib/errors';
 import { useSwapSimulation } from './useSimulation';
 import { DUMMY_SIMULATION_ADDRESS, HORIZON_SYNC_DELAY } from '../lib/constants';
 import { MIN_TRADE_AMOUNT } from '../lib/constants/protocol';
+import { isReplayTransaction } from '../lib/tx-replay-guard';
 import type { Token } from '../types';
 
 export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
@@ -301,6 +302,35 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
         });
         return;
       }
+    }
+
+    // W3-1: Check for replay transaction
+    if (!walletAddress) {
+      addToast({
+        type: 'error',
+        title: 'Wallet Not Connected',
+        description: 'Please connect your wallet to swap',
+      });
+      return;
+    }
+
+    const pathAddresses = route.map((t) => t.address);
+    const rawAmountIn = quoteData?.rawAmountIn || parseTokenAmount(amountIn, tokenIn.decimals);
+    const rawAmountOutMin = applySlippage(quoteData?.rawAmountOut || '0', slippageTolerance);
+
+    if (isReplayTransaction('swap', walletAddress, {
+      tokenIn: tokenIn.address,
+      tokenOut: tokenOut.address,
+      amountIn: rawAmountIn,
+      amountOutMin: rawAmountOutMin,
+      path: pathAddresses,
+    })) {
+      addToast({
+        type: 'warning',
+        title: 'Duplicate Transaction',
+        description: 'This transaction was recently submitted. Please wait before retrying.',
+      });
+      return;
     }
 
     // Set both ref (atomic) and state (UI) locks

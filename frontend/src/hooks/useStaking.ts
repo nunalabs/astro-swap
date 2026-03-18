@@ -4,6 +4,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { stake, unstake, claimRewards, getUserStakeInfo, approveToken, CONTRACTS } from '../lib/contracts';
 import { parseTokenAmount } from '../lib/utils';
 import { HORIZON_SYNC_DELAY } from '../lib/constants';
+import { isReplayTransaction } from '../lib/tx-replay-guard';
 
 export function useStaking(poolId?: string) {
   const address = useWalletStore((state) => state.address);
@@ -29,6 +30,14 @@ export function useStaking(poolId?: string) {
 
       // Parse amount to raw value with correct decimals
       const rawAmount = parseTokenAmount(amount, lpTokenDecimals);
+
+      // W3-1: Check for replay transaction
+      if (isReplayTransaction('stake', address, {
+        poolId,
+        amount: rawAmount,
+      })) {
+        throw new Error('Duplicate transaction detected. Please wait before retrying.');
+      }
 
       console.log('🔓 Approving LP token for staking...', { lpTokenAddress, amount, rawAmount });
 
@@ -71,6 +80,14 @@ export function useStaking(poolId?: string) {
       // Parse amount to raw value with correct decimals
       const rawAmount = parseTokenAmount(amount, lpTokenDecimals);
 
+      // W3-1: Check for replay transaction
+      if (isReplayTransaction('unstake', address, {
+        poolId,
+        amount: rawAmount,
+      })) {
+        throw new Error('Duplicate transaction detected. Please wait before retrying.');
+      }
+
       return unstake(poolId, rawAmount, address);
     },
     onSuccess: (txHash) => {
@@ -101,6 +118,13 @@ export function useStaking(poolId?: string) {
   const claimMutation = useMutation({
     mutationFn: async () => {
       if (!poolId || !address) throw new Error('Missing required parameters');
+
+      // W3-1: Check for replay transaction
+      if (isReplayTransaction('claimRewards', address, {
+        poolId,
+      })) {
+        throw new Error('Duplicate transaction detected. Please wait before retrying.');
+      }
 
       return claimRewards(poolId, address);
     },
