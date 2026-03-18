@@ -58,14 +58,14 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
       let impact = 0;
       try {
         // Get the first pair address for price impact calculation
-        const firstPairAddress = await getPairAddress(path[0], path[1], address);
+        const firstPairAddress = await getPairAddress(path[0].address, path[1].address, address);
 
         if (firstPairAddress) {
           // Use getReservesForPair to ensure correct reserve ordering
           const reservesData = await getReservesForPair(
             firstPairAddress,
-            path[0],  // tokenIn
-            path[1],  // tokenOut (for first hop)
+            path[0].address,  // tokenIn
+            path[1].address,  // tokenOut (for first hop)
             address
           );
 
