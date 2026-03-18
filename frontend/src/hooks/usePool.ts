@@ -5,22 +5,26 @@ import { useTokenStore } from '../stores/tokenStore';
 import {
   getAllPairs,
   getReserves,
+  getReservesForPair,
   getTotalSupply,
   addLiquidity,
   removeLiquidity,
+  getPairAddress,
 } from '../lib/contracts';
 import { getPairTokens, fetchTokenMetadata } from '../lib/token-indexer';
-import { parseTokenAmount } from '../lib/utils';
+import { parseTokenAmount, applySlippage } from '../lib/utils';
+import { HORIZON_SYNC_DELAY } from '../lib/constants';
 import type { Pool, Token } from '../types';
 
 export function usePool() {
   const address = useWalletStore((state) => state.address);
   const deadline = useSettingsStore((state) => state.deadline);
+  const slippageTolerance = useSettingsStore((state) => state.slippageTolerance);
   const addToast = useSettingsStore((state) => state.addToast);
   const queryClient = useQueryClient();
   const getToken = useTokenStore((state) => state.getToken);
 
-  // Fetch all pools with real token data
+  // 🔥 OPTIMIZED: Fetch pools with smart refetch configuration
   const { data: pools = [], isLoading } = useQuery({
     queryKey: ['pools', address],
     queryFn: async () => {
@@ -33,8 +37,11 @@ export function usePool() {
         return [];
       }
 
+      console.log(`🔍 Processing ${pairAddresses.length} pair addresses:`, pairAddresses);
+
       // Fetch details for each pair
       const poolPromises = pairAddresses.map(async (pairAddress) => {
+        console.log(`📦 Fetching details for pair: ${pairAddress}`);
         try {
           // Get tokens from pair contract
           const pairTokens = await getPairTokens(pairAddress);
@@ -43,100 +50,179 @@ export function usePool() {
             return null;
           }
 
-          // Get reserves and total supply in parallel
-          const [reserves, totalSupply] = await Promise.all([
-            getReserves(pairAddress, address),
-            getTotalSupply(pairAddress, address),
+          // Fetch total supply (reserves will be fetched later with proper matching)
+          const totalSupply = await getTotalSupply(pairAddress, address);
+
+          // Get token metadata
+          const [token0Meta, token1Meta] = await Promise.all([
+            fetchTokenMetadata(pairTokens.token0, address),
+            fetchTokenMetadata(pairTokens.token1, address),
           ]);
 
-          // Get token metadata (check cache first)
-          let token0: Token | null = getToken(pairTokens.token0) || null;
-          let token1: Token | null = getToken(pairTokens.token1) || null;
-
-          // Fetch metadata if not in store
-          if (!token0) {
-            token0 = await fetchTokenMetadata(pairTokens.token0);
-          }
-          if (!token1) {
-            token1 = await fetchTokenMetadata(pairTokens.token1);
+          if (!token0Meta || !token1Meta) {
+            console.error(`Failed to fetch token metadata for pair ${pairAddress}`);
+            return null;
           }
 
-          // Fallback if metadata fetch fails
-          if (!token0) {
-            token0 = {
-              address: pairTokens.token0,
-              symbol: pairTokens.token0.slice(0, 6),
-              name: 'Unknown Token',
-              decimals: 7,
-            };
+          const token0: Token = getToken(pairTokens.token0) || {
+            address: pairTokens.token0,
+            symbol: token0Meta.symbol,
+            name: token0Meta.name,
+            decimals: token0Meta.decimals,
+            logoURI: token0Meta.logoURI,
+          };
+
+          const token1: Token = getToken(pairTokens.token1) || {
+            address: pairTokens.token1,
+            symbol: token1Meta.symbol,
+            name: token1Meta.name,
+            decimals: token1Meta.decimals,
+            logoURI: token1Meta.logoURI,
+          };
+
+          // 🔥 STRUCTURAL FIX: Use getReservesForPair to ensure correct reserve ordering
+          // This matches reserves to tokens by fetching both from the contract
+          const matchedReserves = await getReservesForPair(
+            pairAddress,
+            pairTokens.token0,
+            pairTokens.token1,
+            address
+          );
+
+          if (!matchedReserves) {
+            console.error(`Failed to fetch matched reserves for pair ${pairAddress}`);
+            return null;
           }
-          if (!token1) {
-            token1 = {
-              address: pairTokens.token1,
-              symbol: pairTokens.token1.slice(0, 6),
-              name: 'Unknown Token',
-              decimals: 7,
-            };
-          }
+
+          console.log('✅ Pool with matched reserves:', {
+            address: pairAddress,
+            token0: token0.symbol,
+            token1: token1.symbol,
+            reserve0: matchedReserves.reserveA,
+            reserve1: matchedReserves.reserveB,
+          });
 
           return {
             address: pairAddress,
             token0,
             token1,
-            reserve0: reserves?.reserve0 || '0',
-            reserve1: reserves?.reserve1 || '0',
+            reserve0: matchedReserves.reserveA,
+            reserve1: matchedReserves.reserveB,
             totalSupply,
             lpTokenAddress: pairAddress,
             fee: 30, // 0.30%
           } as Pool;
         } catch (error) {
-          console.error(`Error fetching pool data for ${pairAddress}:`, error);
+          console.error(`Error fetching pool details for ${pairAddress}:`, error);
           return null;
         }
       });
 
-      const results = await Promise.all(poolPromises);
-      return results.filter((pool): pool is Pool => pool !== null);
+      const poolsWithDetails = await Promise.all(poolPromises);
+      const validPools = poolsWithDetails.filter((pool): pool is Pool => pool !== null);
+
+      // Filter out empty pools in production (reserve0 OR reserve1 = 0)
+      const nonEmptyPools = validPools.filter((pool) => {
+        const reserve0 = BigInt(pool.reserve0);
+        const reserve1 = BigInt(pool.reserve1);
+
+        if (reserve0 === 0n || reserve1 === 0n) {
+          console.warn(`⚠️ Empty pool found: ${pool.address} (${pool.token0.symbol}/${pool.token1.symbol}) - showing anyway for debugging`);
+          // Keep empty pools for now to allow first liquidity
+          return true;
+        }
+
+        return true;
+      });
+
+      console.log(`✅ Successfully loaded ${nonEmptyPools.length} pools out of ${validPools.length} pairs`);
+      return nonEmptyPools;
     },
     enabled: !!address,
-    staleTime: 30000,
+    // 🔥 NEW: Smart refetch configuration
+    staleTime: 30000, // Consider data fresh for 30s
+    refetchOnWindowFocus: true, // Refetch when user returns to tab
+    refetchOnMount: true, // Refetch on component mount
   });
 
-  // Add liquidity mutation
+  // 🔥 OPTIMIZED: Add liquidity with optimistic updates
   const addLiquidityMutation = useMutation({
     mutationFn: async ({
       tokenA,
       tokenB,
       amountA,
       amountB,
-      slippage,
+      slippage = slippageTolerance,
     }: {
       tokenA: Token;
       tokenB: Token;
       amountA: string;
       amountB: string;
-      slippage: number;
+      slippage?: number;
     }) => {
       if (!address) throw new Error('Wallet not connected');
 
-      // Convert human-readable amounts to raw amounts (with decimals)
+      console.log('🚀 Starting addLiquidity mutation...', { tokenA: tokenA.symbol, tokenB: tokenB.symbol, amountA, amountB, slippage });
+
+      console.log('✅ Wallet connected:', address);
+
+      // Parse amounts to raw values
       const rawAmountA = parseTokenAmount(amountA, tokenA.decimals);
       const rawAmountB = parseTokenAmount(amountB, tokenB.decimals);
 
+      console.log('💰 Raw amounts calculated:', { rawAmountA, rawAmountB });
+
+      // 🔥 FIX: Check if this is first liquidity before calculating minimums
+      console.log('🔍 VERSION CHECK: usePool.ts updated - checking for first liquidity...');
+      let isFirstLiquidity = false;
+      try {
+        const pairAddress = await getPairAddress(tokenA.address, tokenB.address, address);
+
+        if (pairAddress) {
+          const reserves = await getReserves(pairAddress, address);
+
+          if (reserves) {
+            // Check if both reserves are zero (empty pool)
+            const reserve0 = BigInt(reserves.reserve0);
+            const reserve1 = BigInt(reserves.reserve1);
+
+            if (reserve0 === 0n && reserve1 === 0n) {
+              isFirstLiquidity = true;
+              console.log('🆕 First liquidity detected - disabling slippage protection');
+            } else {
+              console.log('📊 Pool has liquidity:', {
+                reserve0: reserve0.toString(),
+                reserve1: reserve1.toString(),
+              });
+            }
+          } else {
+            // Could not fetch reserves - assume first liquidity to be safe
+            isFirstLiquidity = true;
+            console.log('🆕 Could not fetch reserves - assuming first liquidity');
+          }
+        } else {
+          // Pool does not exist - definitely first liquidity
+          isFirstLiquidity = true;
+          console.log('🆕 Pool does not exist - first liquidity');
+        }
+      } catch (error) {
+        console.warn('Could not check pool reserves, assuming first liquidity:', error);
+        isFirstLiquidity = true;
+      }
+
       // Calculate minimum amounts with slippage protection
-      const slippageMultiplier = (100 - slippage) / 100;
-      const rawAmountAMin = parseTokenAmount(
-        (parseFloat(amountA) * slippageMultiplier).toString(),
-        tokenA.decimals
-      );
-      const rawAmountBMin = parseTokenAmount(
-        (parseFloat(amountB) * slippageMultiplier).toString(),
-        tokenB.decimals
-      );
+      // ✅ FIX: Set amount_min = 0 for first liquidity to prevent Error #203
+      const rawAmountAMin = isFirstLiquidity
+        ? '0'
+        : ((BigInt(rawAmountA) * BigInt(Math.floor((100 - slippage) * 100))) / 10000n).toString();
+
+      const rawAmountBMin = isFirstLiquidity
+        ? '0'
+        : ((BigInt(rawAmountB) * BigInt(Math.floor((100 - slippage) * 100))) / 10000n).toString();
 
       const deadlineTimestamp = Math.floor(Date.now() / 1000) + deadline * 60;
 
-      console.log('Adding liquidity:', {
+      console.log('📊 Transaction parameters:', {
         tokenA: tokenA.address,
         tokenB: tokenB.address,
         rawAmountA,
@@ -144,31 +230,28 @@ export function usePool() {
         rawAmountAMin,
         rawAmountBMin,
         deadline: deadlineTimestamp,
+        isFirstLiquidity,
       });
 
-      return addLiquidity(
-        tokenA.address,
-        tokenB.address,
-        rawAmountA,
-        rawAmountB,
-        rawAmountAMin,
-        rawAmountBMin,
-        address,
-        deadlineTimestamp,
-        address
-      );
-    },
-    onSuccess: (txHash) => {
-      addToast({
-        type: 'success',
-        title: 'Liquidity Added',
-        description: `Transaction hash: ${txHash.slice(0, 10)}...`,
-      });
-
-      // Refresh pools and balances
-      queryClient.invalidateQueries({ queryKey: ['pools'] });
-      queryClient.invalidateQueries({ queryKey: ['tokenBalance'] });
-      queryClient.invalidateQueries({ queryKey: ['token-balances'] });
+      console.log('📤 Calling addLiquidity contract...');
+      try {
+        const result = await addLiquidity(
+          tokenA.address,
+          tokenB.address,
+          rawAmountA,
+          rawAmountB,
+          rawAmountAMin,
+          rawAmountBMin,
+          address,           // to parameter
+          deadlineTimestamp,
+          address            // sourceAddress
+        );
+        console.log('✅ addLiquidity success:', result);
+        return { result, rawAmountA, rawAmountB, tokenA, tokenB };
+      } catch (error) {
+        console.error('❌ addLiquidity failed:', error);
+        throw error;
+      }
     },
     onError: (error) => {
       addToast({
@@ -177,9 +260,25 @@ export function usePool() {
         description: error instanceof Error ? error.message : 'Unknown error occurred',
       });
     },
+    onSuccess: async (data) => {
+      addToast({
+        type: 'success',
+        title: 'Liquidity Added',
+        description: `Transaction hash: ${data.result.slice(0, 10)}...`,
+      });
+
+      // Simple refetch with delay - use invalidateQueries to force new object references
+      setTimeout(() => {
+        // Invalidate with partial keys to catch all variants
+        queryClient.invalidateQueries({ queryKey: ['pools', address] }); // Pools for this wallet
+        queryClient.invalidateQueries({ queryKey: ['token-balance'] }); // Partial match: all token balances
+        queryClient.invalidateQueries({ queryKey: ['token-balances'] }); // Legacy key
+        queryClient.invalidateQueries({ queryKey: ['all-token-balances'] }); // All token balances
+      }, HORIZON_SYNC_DELAY); // Wait for Horizon to sync
+    },
   });
 
-  // Remove liquidity mutation
+  // Remove liquidity mutation with simple refresh
   const removeLiquidityMutation = useMutation({
     mutationFn: async ({
       tokenA,
@@ -190,88 +289,47 @@ export function usePool() {
       tokenA: Token;
       tokenB: Token;
       liquidity: string;
-      pool?: Pool; // Optional pool data for slippage calculation
+      pool?: Pool;
     }) => {
       if (!address) throw new Error('Wallet not connected');
 
-      // LP tokens have 7 decimals (same as Stellar native)
       const rawLiquidity = parseTokenAmount(liquidity, 7);
 
-      // Calculate minimum amounts based on current reserves with slippage protection
       let amountAMin = '0';
       let amountBMin = '0';
 
       if (pool && pool.totalSupply) {
         try {
-          // Calculate expected output amounts based on pool share
           const liquidityBigInt = BigInt(rawLiquidity);
           const totalSupplyBigInt = BigInt(pool.totalSupply);
           const reserve0BigInt = BigInt(pool.reserve0);
           const reserve1BigInt = BigInt(pool.reserve1);
 
-          // expectedAmountA = (liquidity * reserve0) / totalSupply
           const expectedAmountA = (liquidityBigInt * reserve0BigInt) / totalSupplyBigInt;
-          // expectedAmountB = (liquidity * reserve1) / totalSupply
           const expectedAmountB = (liquidityBigInt * reserve1BigInt) / totalSupplyBigInt;
 
-          // Apply slippage tolerance (default from settings)
-          const slippageBps = Math.floor(slippageTolerance * 100);
-          const slippageMultiplier = BigInt(10000 - slippageBps);
-
-          // amountMin = expectedAmount * (10000 - slippageBps) / 10000
-          amountAMin = ((expectedAmountA * slippageMultiplier) / 10000n).toString();
-          amountBMin = ((expectedAmountB * slippageMultiplier) / 10000n).toString();
-
-          console.log('Slippage protection enabled:', {
-            expectedAmountA: expectedAmountA.toString(),
-            expectedAmountB: expectedAmountB.toString(),
-            amountAMin,
-            amountBMin,
-            slippageTolerance: `${slippageTolerance}%`,
-          });
+          // FIXED: Use centralized applySlippage() instead of inline calculation
+          amountAMin = applySlippage(expectedAmountA.toString(), slippageTolerance);
+          amountBMin = applySlippage(expectedAmountB.toString(), slippageTolerance);
         } catch (error) {
-          console.error('Error calculating minimum amounts:', error);
-          // Fall back to 0 if calculation fails (accept any amount)
-          amountAMin = '0';
-          amountBMin = '0';
+          console.error('Error calculating minimums, using 0:', error);
         }
-      } else {
-        console.warn('No pool data provided - removing liquidity without slippage protection');
       }
 
       const deadlineTimestamp = Math.floor(Date.now() / 1000) + deadline * 60;
 
-      console.log('Removing liquidity:', {
-        tokenA: tokenA.address,
-        tokenB: tokenB.address,
-        rawLiquidity,
-        amountAMin,
-        amountBMin,
-        deadline: deadlineTimestamp,
-      });
-
-      return removeLiquidity(
+      const result = await removeLiquidity(
         tokenA.address,
         tokenB.address,
         rawLiquidity,
         amountAMin,
         amountBMin,
-        address,
+        address,           // to parameter
         deadlineTimestamp,
-        address
+        address            // sourceAddress
       );
-    },
-    onSuccess: (txHash) => {
-      addToast({
-        type: 'success',
-        title: 'Liquidity Removed',
-        description: `Transaction hash: ${txHash.slice(0, 10)}...`,
-      });
 
-      // Refresh pools and balances
-      queryClient.invalidateQueries({ queryKey: ['pools'] });
-      queryClient.invalidateQueries({ queryKey: ['tokenBalance'] });
-      queryClient.invalidateQueries({ queryKey: ['token-balances'] });
+      return { result, amountAMin, amountBMin, tokenA, tokenB };
     },
     onError: (error) => {
       addToast({
@@ -279,6 +337,22 @@ export function usePool() {
         title: 'Failed to Remove Liquidity',
         description: error instanceof Error ? error.message : 'Unknown error occurred',
       });
+    },
+    onSuccess: async (data) => {
+      addToast({
+        type: 'success',
+        title: 'Liquidity Removed',
+        description: `Transaction hash: ${data.result.slice(0, 10)}...`,
+      });
+
+      // Simple refetch with delay - use invalidateQueries to force new object references
+      setTimeout(() => {
+        // Invalidate with partial keys to catch all variants
+        queryClient.invalidateQueries({ queryKey: ['pools', address] }); // Pools for this wallet
+        queryClient.invalidateQueries({ queryKey: ['token-balance'] }); // Partial match: all token balances
+        queryClient.invalidateQueries({ queryKey: ['token-balances'] }); // Legacy key
+        queryClient.invalidateQueries({ queryKey: ['all-token-balances'] }); // All token balances
+      }, HORIZON_SYNC_DELAY); // Wait for Horizon to sync
     },
   });
 

@@ -55,17 +55,53 @@ function validateContracts() {
 validateContracts();
 
 /**
- * Factory Contract - Get all pairs
+ * Factory Contract - Get all pairs using pagination
+ * Factory contract uses get_pairs_paginated(start_index, limit) instead of get_all_pairs
  */
 export async function getAllPairs(sourceAddress: string): Promise<string[]> {
   try {
-    const result = await callContract(
+    console.log('🔍 Fetching total pairs from factory:', CONTRACTS.FACTORY);
+
+    // Get total number of pairs first
+    const totalPairs = await callContract(
       CONTRACTS.FACTORY,
-      'get_all_pairs',
+      'all_pairs_length',
       [],
       sourceAddress
-    );
-    return result as string[];
+    ) as number;
+
+    console.log(`📊 Factory reports ${totalPairs} total pairs`);
+
+    if (totalPairs === 0) {
+      console.log('⚠️ No pairs exist in factory yet');
+      return [];
+    }
+
+    // Fetch all pairs in one batch (max 100 per call)
+    // If more than 100 pairs exist, fetch in multiple batches
+    const allPairs: string[] = [];
+    const batchSize = 100;
+
+    for (let start = 0; start < totalPairs; start += batchSize) {
+      const limit = Math.min(batchSize, totalPairs - start);
+      console.log(`📥 Fetching pairs batch: start=${start}, limit=${limit}`);
+
+      const startScVal = StellarSdk.nativeToScVal(start, { type: 'u32' });
+      const limitScVal = StellarSdk.nativeToScVal(limit, { type: 'u32' });
+
+      const batch = await callContract(
+        CONTRACTS.FACTORY,
+        'get_pairs_paginated',
+        [startScVal, limitScVal],
+        sourceAddress
+      ) as string[];
+
+      console.log(`✅ Received ${batch.length} pair addresses in batch`);
+
+      allPairs.push(...batch);
+    }
+
+    return allPairs;
   } catch (error) {
     console.error('Error getting all pairs:', error);
     return [];
@@ -91,6 +127,13 @@ export async function getPairAddress(
       sourceAddress
     );
 
+    console.log('🏭 Factory.get_pair result:', {
+      token0: token0.substring(0, 8) + '...',
+      token1: token1.substring(0, 8) + '...',
+      pairAddress: result ? (result as string).substring(0, 8) + '...' : null,
+      fullPairAddress: result,
+    });
+
     return result as string;
   } catch (error) {
     console.error('Error getting pair address:', error);
@@ -100,11 +143,12 @@ export async function getPairAddress(
 
 /**
  * Pair Contract - Get reserves
+ * Returns tuple (reserve0, reserve1) from Soroban as [i128, i128]
  */
 export async function getReserves(
   pairAddress: string,
   sourceAddress: string
-): Promise<{ reserve0: string; reserve1: string; blockTimestampLast: number } | null> {
+): Promise<{ reserve0: string; reserve1: string } | null> {
   try {
     const result = await callContract(
       pairAddress,
@@ -113,9 +157,29 @@ export async function getReserves(
       sourceAddress
     );
 
-    return result as { reserve0: string; reserve1: string; blockTimestampLast: number };
+    console.log('🔍 getReserves raw result:', {
+      result,
+      isArray: Array.isArray(result),
+      length: Array.isArray(result) ? result.length : 'N/A',
+      type: typeof result,
+      constructor: result?.constructor?.name,
+    });
+
+    // Soroban returns tuple as array: [reserve0, reserve1]
+    // Values come as BigInt from scValToNative
+    if (Array.isArray(result) && result.length === 2) {
+      const reserves = {
+        reserve0: result[0]?.toString() || '0',
+        reserve1: result[1]?.toString() || '0',
+      };
+      console.log('✅ Parsed reserves:', reserves);
+      return reserves;
+    }
+
+    console.warn('❌ Unexpected reserves format:', result);
+    return null;
   } catch (error) {
-    console.error('Error getting reserves:', error);
+    console.error('❌ Error getting reserves:', error);
     return null;
   }
 }
@@ -159,6 +223,121 @@ function calculateAmountOut(amountIn: bigint, reserveIn: bigint, reserveOut: big
 }
 
 /**
+ * CENTRALIZED HELPER: Get reserves with tokens matched correctly
+ *
+ * STRUCTURAL FIX FOR RESERVE ORDERING:
+ * The pair contract stores tokens in SORTED order (lexicographically by address).
+ * This function ensures reserves are ALWAYS matched to the correct tokens by:
+ * 1. Fetching reserves AND token addresses from the contract
+ * 2. Verifying which token is token_0 and which is token_1
+ * 3. Returning reserves matched to the specified tokens
+ *
+ * USE THIS EVERYWHERE instead of calling getReserves() + assuming order!
+ *
+ * @param pairAddress - Address of the pair contract
+ * @param tokenA - First token address (order doesn't matter)
+ * @param tokenB - Second token address (order doesn't matter)
+ * @param sourceAddress - User's address for simulation
+ * @returns Object with reserveA and reserveB correctly matched to tokenA/tokenB,
+ *          plus token0/token1 from contract for verification
+ */
+export async function getReservesForPair(
+  pairAddress: string,
+  tokenA: string,
+  tokenB: string,
+  sourceAddress: string
+): Promise<{
+  reserveA: string;
+  reserveB: string;
+  token0: string;
+  token1: string;
+} | null> {
+  try {
+    console.log('🔍 getReservesForPair called:', {
+      pairAddress: pairAddress.slice(0, 8) + '...',
+      tokenA: tokenA.slice(0, 8) + '...',
+      tokenB: tokenB.slice(0, 8) + '...',
+    });
+
+    // Fetch reserves, token0, AND token1 in parallel
+    const [reserves, token0, token1] = await Promise.all([
+      getReserves(pairAddress, sourceAddress),
+      callContract(pairAddress, 'token_0', [], sourceAddress) as Promise<string>,
+      callContract(pairAddress, 'token_1', [], sourceAddress) as Promise<string>,
+    ]);
+
+    if (!reserves) {
+      console.error('❌ Failed to fetch reserves');
+      return null;
+    }
+
+    console.log('📊 Contract data:', {
+      pairAddress: pairAddress.slice(0, 8) + '...',
+      token0: token0.slice(0, 8) + '...',
+      token1: token1.slice(0, 8) + '...',
+      reserve0: reserves.reserve0,
+      reserve1: reserves.reserve1,
+    });
+
+    // Determine which reserve corresponds to which token
+    let reserveA: string;
+    let reserveB: string;
+
+    if (tokenA === token0 && tokenB === token1) {
+      // tokenA is token0, tokenB is token1
+      reserveA = reserves.reserve0;
+      reserveB = reserves.reserve1;
+      console.log('✅ tokenA=token0, tokenB=token1 → reserveA=reserve0, reserveB=reserve1');
+    } else if (tokenA === token1 && tokenB === token0) {
+      // tokenA is token1, tokenB is token0
+      reserveA = reserves.reserve1;
+      reserveB = reserves.reserve0;
+      console.log('✅ tokenA=token1, tokenB=token0 → reserveA=reserve1, reserveB=reserve0');
+    } else {
+      console.error('❌ Token mismatch! Tokens do not match contract token0/token1:', {
+        tokenA,
+        tokenB,
+        token0,
+        token1,
+      });
+      return null;
+    }
+
+    console.log('✅ Final matched reserves:', {
+      reserveA,
+      reserveB,
+    });
+
+    return { reserveA, reserveB, token0, token1 };
+  } catch (error) {
+    console.error('❌ Error in getReservesForPair:', error);
+    return null;
+  }
+}
+
+/**
+ * INTERNAL HELPER: Get reserves for swap calculations with correct ordering
+ * Uses getReservesForPair() internally for consistency.
+ */
+async function getReservesForSwap(
+  pairAddress: string,
+  tokenIn: string,
+  tokenOut: string,
+  sourceAddress: string
+): Promise<{ reserveIn: bigint; reserveOut: bigint } | null> {
+  const result = await getReservesForPair(pairAddress, tokenIn, tokenOut, sourceAddress);
+
+  if (!result) {
+    return null;
+  }
+
+  return {
+    reserveIn: BigInt(result.reserveA),
+    reserveOut: BigInt(result.reserveB),
+  };
+}
+
+/**
  * Get amounts out for a path - OPTIMIZED with batch RPC calls
  * Reduces N+1 query problem by fetching all pair data in parallel
  *
@@ -194,21 +373,20 @@ export async function getAmountsOut(
       }
     }
 
-    // Step 2: Get all reserves and token0 in parallel (1 batch)
-    const pairDataPromises = pairAddresses.map(async (pairAddress) => {
-      const [reserves, token0] = await Promise.all([
-        getReserves(pairAddress!, sourceAddress),
-        callContract(pairAddress!, 'token_0', [], sourceAddress) as Promise<string>,
-      ]);
-      return { pairAddress, reserves, token0 };
-    });
+    // Step 2: Get all reserves in parallel using centralized function
+    const reservesPromises = [];
+    for (let i = 0; i < path.length - 1; i++) {
+      reservesPromises.push(
+        getReservesForSwap(pairAddresses[i]!, path[i], path[i + 1], sourceAddress)
+      );
+    }
 
-    const pairDataList = await Promise.all(pairDataPromises);
+    const reservesList = await Promise.all(reservesPromises);
 
-    // Validate all data retrieved
-    for (const pairData of pairDataList) {
-      if (!pairData.reserves) {
-        console.error('Could not get reserves for pair', pairData.pairAddress);
+    // Validate all reserves retrieved
+    for (let i = 0; i < reservesList.length; i++) {
+      if (!reservesList[i]) {
+        console.error('Could not get reserves for hop', i);
         return [];
       }
     }
@@ -218,26 +396,19 @@ export async function getAmountsOut(
     let currentAmount = BigInt(amountIn);
 
     for (let i = 0; i < path.length - 1; i++) {
-      const tokenIn = path[i];
-      const { reserves, token0 } = pairDataList[i];
+      const { reserveIn, reserveOut } = reservesList[i]!;
 
-      // Parse reserves as BigInt
-      let reserveIn: bigint;
-      let reserveOut: bigint;
-
-      if (Array.isArray(reserves)) {
-        // Handle array format [reserve0, reserve1]
-        const [r0, r1] = reserves;
-        reserveIn = tokenIn === token0 ? BigInt(r0) : BigInt(r1);
-        reserveOut = tokenIn === token0 ? BigInt(r1) : BigInt(r0);
-      } else {
-        // Handle object format { reserve0, reserve1 }
-        reserveIn = tokenIn === token0 ? BigInt(reserves.reserve0) : BigInt(reserves.reserve1);
-        reserveOut = tokenIn === token0 ? BigInt(reserves.reserve1) : BigInt(reserves.reserve0);
-      }
+      console.log(`\n🔄 Swap hop ${i}: ${path[i].slice(0, 8)}... → ${path[i + 1].slice(0, 8)}...`);
+      console.log(`💰 Reserves:`, {
+        reserveIn: reserveIn.toString(),
+        reserveOut: reserveOut.toString(),
+        currentAmount: currentAmount.toString(),
+      });
 
       // Calculate output amount (local computation)
       const amountOut = calculateAmountOut(currentAmount, reserveIn, reserveOut);
+      console.log(`📈 Amount out:`, amountOut.toString());
+
       amounts.push(amountOut.toString());
       currentAmount = amountOut;
     }
@@ -462,6 +633,8 @@ export async function getUserStakeInfo(
 
 /**
  * Token Contract - Approve spending
+ * Signature: fn approve(env: Env, from: Address, spender: Address, amount: i128, expiration_ledger: u32)
+ * Reference: https://developers.stellar.org/docs/tokens/token-interface
  */
 export async function approveToken(
   tokenAddress: string,
@@ -470,14 +643,38 @@ export async function approveToken(
   sourceAddress: string
 ): Promise<string> {
   try {
+    // Import sorobanServer
+    const { sorobanServer } = await import('./stellar');
+
     const contract = new StellarSdk.Contract(tokenAddress);
+
+    // Get current ledger from Soroban RPC
+    const latestLedger = await sorobanServer.getLatestLedger();
+    const currentLedger = latestLedger.sequence;
+
+    // Calculate expiration ledger - use conservative value to avoid exceeding network limits
+    // Testnet max TTL is ~535,679 ledgers (4 weeks)
+    // We use 7 days to be safe: 7 * 17,280 = 120,960 ledgers
+    // Stellar produces ~1 ledger every 5 seconds = 17,280 ledgers per day
+    const daysToExpire = 7;  // Conservative: 1 week instead of 30 days
+    const ledgersPerDay = 17280;
+    const expirationLedger = currentLedger + (daysToExpire * ledgersPerDay);
+
+    console.log('Token approval:', {
+      token: tokenAddress,
+      spender,
+      amount,
+      currentLedger,
+      expirationLedger,
+      daysToExpire,
+    });
 
     const operation = contract.call(
       'approve',
-      StellarSdk.nativeToScVal(sourceAddress, { type: 'address' }),
-      StellarSdk.nativeToScVal(spender, { type: 'address' }),
-      StellarSdk.nativeToScVal(amount, { type: 'u128' }),
-      StellarSdk.nativeToScVal(9999999999, { type: 'u64' }) // expiration
+      StellarSdk.nativeToScVal(sourceAddress, { type: 'address' }), // from
+      StellarSdk.nativeToScVal(spender, { type: 'address' }),        // spender
+      StellarSdk.nativeToScVal(amount, { type: 'i128' }),            // amount (i128 for SAC tokens)
+      StellarSdk.nativeToScVal(expirationLedger, { type: 'u32' })   // expiration_ledger (u32, absolute)
     );
 
     const txHash = await buildAndSubmitTransaction(sourceAddress, [operation]);
