@@ -31,29 +31,29 @@ class Logger {
   }
 
   private formatMessage(message: string, context?: LogContext): string {
-    if (\!context || Object.keys(context).length === 0) {
+    if (!context || Object.keys(context).length === 0) {
       return message;
     }
     return `${message} ${JSON.stringify(context)}`;
   }
 
   debug(message: string, context?: LogContext): void {
-    if (\!this.shouldLog('debug')) return;
+    if (!this.shouldLog('debug')) return;
     console.debug(`[DEBUG] ${this.formatMessage(message, context)}`);
   }
 
   info(message: string, context?: LogContext): void {
-    if (\!this.shouldLog('info')) return;
+    if (!this.shouldLog('info')) return;
     console.log(`[INFO] ${this.formatMessage(message, context)}`);
   }
 
   warn(message: string, context?: LogContext): void {
-    if (\!this.shouldLog('warn')) return;
+    if (!this.shouldLog('warn')) return;
     console.warn(`[WARN] ${this.formatMessage(message, context)}`);
   }
 
   error(message: string, error?: Error | unknown, context?: LogContext): void {
-    if (\!this.shouldLog('error')) return;
+    if (!this.shouldLog('error')) return;
 
     const errorContext = {
       ...context,
@@ -68,12 +68,12 @@ class Logger {
   }
 
   time(label: string): void {
-    if (\!this.isDevelopment) return;
+    if (!this.isDevelopment) return;
     console.time(`[PERF] ${label}`);
   }
 
   timeEnd(label: string): void {
-    if (\!this.isDevelopment) return;
+    if (!this.isDevelopment) return;
     console.timeEnd(`[PERF] ${label}`);
   }
 }

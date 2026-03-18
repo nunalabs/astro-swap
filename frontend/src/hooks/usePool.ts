@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tantml:function_calls>import { useWalletStore } from '../stores/walletStore';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useWalletStore } from '../stores/walletStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useTokenStore } from '../stores/tokenStore';
 import {
