@@ -8,6 +8,7 @@ import { calculatePriceImpact, parseTokenAmount, formatTokenAmount, applySlippag
 import { formatErrorForToast } from '../lib/errors';
 import { useSwapSimulation } from './useSimulation';
 import { DUMMY_SIMULATION_ADDRESS, HORIZON_SYNC_DELAY } from '../lib/constants';
+import { MIN_TRADE_AMOUNT } from '../lib/constants/protocol';
 import type { Token } from '../types';
 
 export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
@@ -263,6 +264,26 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
         type: 'warning',
         title: 'Invalid Input',
         description: 'Please enter valid amounts',
+      });
+      return;
+    }
+
+    // Validate minimum trade amount (M-1: Frontend validation)
+    try {
+      const rawAmountIn = parseTokenAmount(amountIn, tokenIn.decimals);
+      if (BigInt(rawAmountIn) < MIN_TRADE_AMOUNT) {
+        addToast({
+          type: 'warning',
+          title: 'Amount Too Low',
+          description: `Minimum trade amount is 0.1 XLM (${formatTokenAmount(MIN_TRADE_AMOUNT.toString(), 7, 4)} tokens)`,
+        });
+        return;
+      }
+    } catch (error) {
+      addToast({
+        type: 'error',
+        title: 'Invalid Amount',
+        description: 'Could not parse trade amount',
       });
       return;
     }
