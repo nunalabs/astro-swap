@@ -131,7 +131,18 @@ if (typeof window !== 'undefined') {
 
       useSettingsStore.setState(validatedSettings);
     } catch (error) {
+      // M-6: Full recovery from corrupted localStorage
       console.error('Error loading settings:', error);
+      console.warn('Resetting to default settings due to corrupted data');
+
+      // Clear corrupted entry
+      localStorage.removeItem('astroswap_settings');
+
+      // Reset to defaults
+      useSettingsStore.setState(DEFAULT_SETTINGS);
+
+      // Save fresh defaults
+      localStorage.setItem('astroswap_settings', JSON.stringify(DEFAULT_SETTINGS));
     }
   }
 }
