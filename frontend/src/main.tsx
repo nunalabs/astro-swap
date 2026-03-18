@@ -1,6 +1,22 @@
-// Buffer polyfill for Stellar Wallet Kit
+// Polyfills for Stellar SDK 14.x compatibility
 import { Buffer } from 'buffer';
+
+// Type augmentation for proper type safety
+declare global {
+  interface Window {
+    Buffer: typeof Buffer;
+    global: typeof globalThis;
+    process: {
+      env: Record<string, string | undefined>;
+    };
+  }
+}
+
 window.Buffer = Buffer;
+window.global = window;
+if (!window.process) {
+  window.process = { env: {} };
+}
 
 // Initialize Sentry error tracking (before React)
 import { initSentry } from './lib/sentry';
