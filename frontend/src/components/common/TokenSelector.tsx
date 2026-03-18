@@ -6,7 +6,7 @@ import { useTokenStore } from '../../stores/tokenStore';
 import { useWalletStore } from '../../stores/walletStore';
 import { getTokenDisplayInfo } from '../../lib/tokens';
 import type { Token } from '../../types';
-import { cn } from '../../lib/utils';
+import { cn, sanitizeText } from '../../lib/utils';
 
 // PERFORMANCE: Virtual scrolling - only render visible items
 const INITIAL_VISIBLE_COUNT = 20;
@@ -71,8 +71,10 @@ export const TokenSelector = memo(function TokenSelector({ selectedToken, onSele
     });
   }, [tokens, asyncSearchResults, hasSearched, excludeTokens, searchQuery]);
 
-  // Debounced async search
+  // Debounced async search with cancellation guard
   useEffect(() => {
+    let isCancelled = false;
+
     if (searchQuery.length < 2) {
       setAsyncSearchResults([]);
       setHasSearched(false);
@@ -87,11 +89,16 @@ export const TokenSelector = memo(function TokenSelector({ selectedToken, onSele
     // Debounce the search
     searchTimeoutRef.current = setTimeout(async () => {
       const results = await searchTokensAsync(searchQuery);
-      setAsyncSearchResults(results);
-      setHasSearched(true);
+
+      // Only update state if component is still mounted
+      if (!isCancelled) {
+        setAsyncSearchResults(results);
+        setHasSearched(true);
+      }
     }, SEARCH_DEBOUNCE_MS);
 
     return () => {
+      isCancelled = true;
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
       }
@@ -404,7 +411,10 @@ const TokenItem = memo(function TokenItem({ token, isFavorite, onSelect, onToggl
 
         <div className="flex-1 min-w-0 overflow-hidden">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-semibold text-white truncate max-w-[120px]">{displayInfo.symbol}</span>
+            <span
+              className="font-semibold text-white truncate max-w-[120px]"
+              dangerouslySetInnerHTML={{ __html: sanitizeText(displayInfo.symbol) }}
+            />
             {token.verified && (
               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-green-500/20 text-green-400 flex-shrink-0" title="Verified token">
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
@@ -426,7 +436,10 @@ const TokenItem = memo(function TokenItem({ token, isFavorite, onSelect, onToggl
             )}
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-sm text-neutral-400 truncate max-w-[140px]">{displayInfo.name}</span>
+            <span
+              className="text-sm text-neutral-400 truncate max-w-[140px]"
+              dangerouslySetInnerHTML={{ __html: sanitizeText(displayInfo.name) }}
+            />
             {displayInfo.issuerShort && (
               <span className="text-xs text-neutral-500 truncate max-w-[80px] flex-shrink-0">
                 {displayInfo.issuerShort}

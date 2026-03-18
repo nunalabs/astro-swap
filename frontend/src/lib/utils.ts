@@ -8,6 +8,18 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * Sanitize text to prevent XSS attacks (M-5)
+ * Escapes HTML entities from untrusted sources like token names/symbols
+ */
+export function sanitizeText(text: string): string {
+  if (!text) return '';
+
+  const element = document.createElement('div');
+  element.textContent = text;
+  return element.innerHTML;
+}
+
+/**
  * Format a number with proper decimals and thousand separators
  */
 export function formatNumber(
