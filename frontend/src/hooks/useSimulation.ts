@@ -41,21 +41,21 @@ export function useSwapSimulation() {
     try {
       const contract = new StellarSdk.Contract(CONTRACTS.ROUTER);
 
+      const userScVal = StellarSdk.nativeToScVal(address, { type: 'address' });
       const amountInScVal = StellarSdk.nativeToScVal(params.amountIn, { type: 'i128' });
       const amountOutMinScVal = StellarSdk.nativeToScVal(params.amountOutMin, { type: 'i128' });
       // Create vector of addresses properly - each address must be encoded individually
       const pathScVal = StellarSdk.xdr.ScVal.scvVec(
         params.path.map(addr => StellarSdk.nativeToScVal(addr, { type: 'address' }))
       );
-      const toScVal = StellarSdk.nativeToScVal(params.to, { type: 'address' });
       const deadlineScVal = StellarSdk.nativeToScVal(params.deadline, { type: 'u64' });
 
       const operation = contract.call(
         'swap_exact_tokens_for_tokens',
+        userScVal,
         amountInScVal,
         amountOutMinScVal,
         pathScVal,
-        toScVal,
         deadlineScVal
       );
 
@@ -115,13 +115,13 @@ export function useAddLiquiditySimulation() {
 
       const operation = contract.call(
         'add_liquidity',
+        StellarSdk.nativeToScVal(address, { type: 'address' }), // user
         StellarSdk.nativeToScVal(params.tokenA, { type: 'address' }),
         StellarSdk.nativeToScVal(params.tokenB, { type: 'address' }),
         StellarSdk.nativeToScVal(params.amountADesired, { type: 'i128' }),
         StellarSdk.nativeToScVal(params.amountBDesired, { type: 'i128' }),
         StellarSdk.nativeToScVal(params.amountAMin, { type: 'i128' }),
         StellarSdk.nativeToScVal(params.amountBMin, { type: 'i128' }),
-        StellarSdk.nativeToScVal(params.to, { type: 'address' }),
         StellarSdk.nativeToScVal(params.deadline, { type: 'u64' })
       );
 
