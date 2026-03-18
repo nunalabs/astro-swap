@@ -51,6 +51,11 @@ export function formatTokenAmount(
     // Convert to string if number
     const amountStr = typeof amount === 'number' ? amount.toString() : amount;
 
+    // H-3: Validate length to prevent BigInt DoS attacks
+    if (amountStr.length > 78) {
+      throw new Error('Amount too large');
+    }
+
     // Parse as BigInt to avoid precision loss
     const rawAmount = BigInt(amountStr);
 
@@ -164,6 +169,11 @@ export function calculatePriceImpact(
 
 /**
  * Calculate minimum received with slippage
+ *
+ * @deprecated Use applySlippage() instead for better precision with BigInt arithmetic
+ *
+ * This function uses floating point math which can have precision issues.
+ * Use applySlippage() for exact integer arithmetic suitable for on-chain amounts.
  */
 export function calculateMinimumReceived(
   amount: string,
@@ -282,6 +292,12 @@ export function parseTokenAmount(amount: string, decimals: number): string {
 
   // Remove leading/trailing whitespace
   const cleaned = amount.trim();
+
+  // H-3: Validate length to prevent BigInt DoS attacks
+  // Max i128 is 39 digits, allow up to 78 chars total for safety
+  if (cleaned.length > 78) {
+    throw new Error('Amount too large');
+  }
 
   // Handle negative numbers
   if (cleaned.startsWith('-')) return '0';
