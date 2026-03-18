@@ -6,9 +6,11 @@ import {
   getStakingPoolInfo,
   getPendingRewards,
   getUserStakeInfo,
+  type ContractStakingPool,
 } from '../lib/contracts';
 import { fetchTokenMetadata } from '../lib/token-indexer';
-import { HORIZON_SYNC_DELAY } from '../lib/constants';
+import { HORIZON_SYNC_DELAY, DUMMY_SIMULATION_ADDRESS } from '../lib/constants';
+import { logger } from '../lib/logger';
 import type { StakingPool, Token } from '../types';
 
 /**
@@ -44,7 +46,7 @@ function calculateStakingAPR(
  * Transform contract StakingPool data to frontend format
  */
 async function transformStakingPool(
-  contractPool: any,
+  contractPool: ContractStakingPool,
   userAddress: string | null,
   getToken: (address: string) => Token | undefined
 ): Promise<StakingPool | null> {
@@ -56,7 +58,7 @@ async function transformStakingPool(
     ]);
 
     if (!lpTokenMeta || !rewardTokenMeta) {
-      console.error('Failed to fetch token metadata for pool', contractPool.pool_id);
+      logger.error('Failed to fetch token metadata for pool', contractPool.pool_id);
       return null;
     }
 
@@ -106,7 +108,7 @@ async function transformStakingPool(
         userRewards = pendingRewards;
       } catch (error) {
         // User has no stake - this is expected for new users
-        console.debug(`No stake info for user in pool ${contractPool.pool_id}`);
+        logger.debug(`No stake info for user in pool ${contractPool.pool_id}`);
       }
     }
 
@@ -123,7 +125,7 @@ async function transformStakingPool(
       endTime: Number(contractPool.end_time),
     };
   } catch (error) {
-    console.error('Error transforming staking pool:', error);
+    logger.error('Error transforming staking pool:', error);
     return null;
   }
 }
@@ -142,19 +144,19 @@ export function useStakingPools() {
     queryKey: ['staking-pools', address],
     queryFn: async () => {
       // Use dummy address for fetching pool data when not connected
-      const dummyAddress = address || 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
+      const dummyAddress = address || DUMMY_SIMULATION_ADDRESS;
 
-      console.log('🔍 Fetching staking pools...');
+      logger.info('Fetching staking pools...');
 
       // Step 1: Get total pool count
       const poolCount = await getStakingPoolCount(dummyAddress);
 
       if (poolCount === 0) {
-        console.log('No staking pools found');
+        logger.info('No staking pools found');
         return [];
       }
 
-      console.log(`📊 Found ${poolCount} staking pools`);
+      logger.info(`Found ${poolCount} staking pools`);
 
       // Step 2: Fetch all pool info in parallel
       const poolPromises: Promise<StakingPool | null>[] = [];
@@ -166,13 +168,13 @@ export function useStakingPools() {
             try {
               const contractPool = await getStakingPoolInfo(i, dummyAddress);
               if (!contractPool) {
-                console.warn(`Failed to fetch pool ${i}`);
+                logger.warn(`Failed to fetch pool ${i}`);
                 return null;
               }
 
               return transformStakingPool(contractPool, address, getToken);
             } catch (error) {
-              console.error(`Error fetching pool ${i}:`, error);
+              logger.error(`Error fetching pool ${i}:`, error);
               return null;
             }
           })()
@@ -188,21 +190,21 @@ export function useStakingPools() {
         .filter((pool) => {
           // Filter out pools that have ended, unless user has stake in them
           if (pool.endTime < now && !pool.userStaked) {
-            console.log(`Pool ${pool.address} ended, skipping`);
+            logger.debug(`Pool ${pool.address} ended, skipping`);
             return false;
           }
 
           // Filter out pools that haven't started yet (optional)
           // Uncomment if you want to hide future pools
           // if (pool.startTime > now) {
-          //   console.log(`Pool ${pool.address} not started yet, skipping`);
+          //   logger.debug(`Pool ${pool.address} not started yet, skipping`);
           //   return false;
           // }
 
           return true;
         });
 
-      console.log(`✅ Loaded ${validPools.length} active staking pools`);
+      logger.info(`Loaded ${validPools.length} active staking pools`);
       return validPools;
     },
     enabled: true, // Fetch even without wallet

@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useWalletStore } from '../stores/walletStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { stake, unstake, claimRewards, getUserStakeInfo, approveToken, CONTRACTS } from '../lib/contracts';
+import { parseTokenAmount } from '../lib/utils';
 import { HORIZON_SYNC_DELAY } from '../lib/constants';
 
 export function useStaking(poolId?: string) {
@@ -23,17 +24,20 @@ export function useStaking(poolId?: string) {
 
   // Stake mutation
   const stakeMutation = useMutation({
-    mutationFn: async ({ amount, lpTokenAddress }: { amount: string; lpTokenAddress: string }) => {
+    mutationFn: async ({ amount, lpTokenAddress, lpTokenDecimals }: { amount: string; lpTokenAddress: string; lpTokenDecimals: number }) => {
       if (!poolId || !address) throw new Error('Missing required parameters');
 
-      console.log('🔓 Approving LP token for staking...', { lpTokenAddress, amount });
+      // Parse amount to raw value with correct decimals
+      const rawAmount = parseTokenAmount(amount, lpTokenDecimals);
+
+      console.log('🔓 Approving LP token for staking...', { lpTokenAddress, amount, rawAmount });
 
       // First approve LP token spending by staking contract
-      await approveToken(lpTokenAddress, CONTRACTS.STAKING, amount, address);
+      await approveToken(lpTokenAddress, CONTRACTS.STAKING, rawAmount, address);
 
       console.log('✅ LP token approved, executing stake...');
 
-      return stake(poolId, amount, address);
+      return stake(poolId, rawAmount, address);
     },
     onSuccess: (txHash) => {
       addToast({
@@ -60,10 +64,13 @@ export function useStaking(poolId?: string) {
 
   // Unstake mutation
   const unstakeMutation = useMutation({
-    mutationFn: async ({ amount }: { amount: string }) => {
+    mutationFn: async ({ amount, lpTokenDecimals }: { amount: string; lpTokenDecimals: number }) => {
       if (!poolId || !address) throw new Error('Missing required parameters');
 
-      return unstake(poolId, amount, address);
+      // Parse amount to raw value with correct decimals
+      const rawAmount = parseTokenAmount(amount, lpTokenDecimals);
+
+      return unstake(poolId, rawAmount, address);
     },
     onSuccess: (txHash) => {
       addToast({

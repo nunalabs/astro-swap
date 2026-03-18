@@ -3,6 +3,29 @@ import { callContract, buildAndSubmitTransaction } from './stellar';
 import { isValidContractId } from './utils';
 import type { Pool, Token } from '../types';
 
+/**
+ * Staking contract types (raw contract responses)
+ * These types match the Soroban contract return types
+ */
+export interface ContractStakingPool {
+  pool_id: number;
+  lp_token: string;
+  reward_token: string;
+  total_staked: bigint;
+  reward_per_second: bigint;
+  start_time: bigint;
+  end_time: bigint;
+  last_update_time: bigint;
+  acc_reward_per_share: bigint;
+}
+
+export interface ContractUserStake {
+  amount: bigint;
+  reward_debt: bigint;
+  stake_time: bigint;
+  multiplier: number; // u32
+}
+
 // Contract addresses (set via environment variables)
 export const CONTRACTS = {
   FACTORY: import.meta.env.VITE_FACTORY_CONTRACT_ID || '',
@@ -556,7 +579,7 @@ export async function getStakingPoolCount(sourceAddress: string): Promise<number
 export async function getStakingPoolInfo(
   poolId: number,
   sourceAddress: string
-): Promise<any | null> {
+): Promise<ContractStakingPool | null> {
   try {
     const poolIdScVal = StellarSdk.nativeToScVal(poolId, { type: 'u32' });
 
