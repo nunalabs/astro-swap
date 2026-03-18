@@ -1,6 +1,7 @@
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { callContract, buildAndSubmitTransaction } from './stellar';
 import { isValidContractId } from './utils';
+import { NATIVE_XLM_SAC, USDC_TESTNET_SAC } from './constants/tokens';
 import type { Pool, Token } from '../types';
 
 /**
@@ -805,9 +806,10 @@ export function calculateOptimalPath(
     return [tokenIn, tokenOut];
   }
 
-  // Try path through intermediate tokens (e.g., USDC, XLM)
-  // This is a simplified version - implement proper pathfinding for production
-  const intermediateTokens = ['USDC_ADDRESS', 'XLM_ADDRESS']; // Replace with actual addresses
+  // Try path through intermediate tokens (USDC, XLM)
+  // Note: This is a simplified 2-hop routing. For production with many pairs,
+  // implement Dijkstra's algorithm or similar pathfinding
+  const intermediateTokens = [NATIVE_XLM_SAC, USDC_TESTNET_SAC];
 
   for (const intermediate of intermediateTokens) {
     const pool1 = pools.find(
