@@ -20,6 +20,33 @@ export function sanitizeText(text: string): string {
 }
 
 /**
+ * Validate token logo URI (M-4)
+ * Only allow HTTPS URLs, reject data: URIs and javascript: URIs
+ */
+export function isValidLogoURI(uri: string | undefined): boolean {
+  if (!uri) return false;
+
+  try {
+    const url = new URL(uri);
+    return url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Sanitize logo URI (M-4)
+ * Returns sanitized URI or undefined if invalid
+ */
+export function sanitizeLogoURI(uri: string | undefined): string | undefined {
+  if (!uri) return undefined;
+  if (isValidLogoURI(uri)) return uri;
+
+  console.warn('Invalid logo URI detected and rejected:', uri);
+  return undefined;
+}
+
+/**
  * Format a number with proper decimals and thousand separators
  */
 export function formatNumber(

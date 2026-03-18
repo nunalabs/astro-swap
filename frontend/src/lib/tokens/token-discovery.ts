@@ -11,6 +11,7 @@
 
 import type { Token, TokenSource } from '../../types';
 import whitelistData from './whitelist.json';
+import { sanitizeLogoURI } from '../utils';
 
 // Stellar network configuration
 const STELLAR_NETWORK = import.meta.env.VITE_STELLAR_NETWORK || 'testnet';
@@ -65,7 +66,7 @@ export function getWhitelistTokens(): Token[] {
       symbol: wt.symbol,
       name: wt.name,
       decimals: wt.decimals,
-      logoURI: wt.icon,
+      logoURI: sanitizeLogoURI(wt.icon), // M-4: Validate logo URI
       issuer: wt.issuer,
       domain: wt.domain,
       verified: wt.verified ?? true,
@@ -120,7 +121,7 @@ export async function fetchStellarExpertTokens(options: {
         symbol: assetCode,  // Just the code, e.g., "USDC"
         name: asset.toml_info?.name || asset.name || assetCode,
         decimals: 7, // Stellar default
-        logoURI: asset.toml_info?.image,
+        logoURI: sanitizeLogoURI(asset.toml_info?.image), // M-4: Validate logo URI
         issuer: asset.issuer,
         domain: asset.domain,
         rating: asset.rating?.average,
@@ -180,7 +181,7 @@ export async function searchHorizonTokens(query: string): Promise<Token[]> {
         const tomlInfo = await fetchTomlInfo(record._links.toml.href, record.asset_code);
         if (tomlInfo) {
           token.name = tomlInfo.name || token.name;
-          token.logoURI = tomlInfo.image;
+          token.logoURI = sanitizeLogoURI(tomlInfo.image); // M-4: Validate logo URI
           token.domain = tomlInfo.domain;
         }
       }
