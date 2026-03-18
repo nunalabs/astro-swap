@@ -368,9 +368,25 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
     setAmountOut(amountIn);
   }, [amountIn, amountOut]);
 
+  // W3-3: Calculate minimum received using SAME logic as contract (applySlippage)
+  // This ensures display matches exactly what's sent to the contract
+  const minimumReceived = (() => {
+    if (!tokenOut || !quoteData?.rawAmountOut) return '0';
+
+    try {
+      // Apply slippage using the SAME applySlippage() function used in contracts
+      const rawMinimum = applySlippage(quoteData.rawAmountOut, slippageTolerance);
+      // Format for display with full precision
+      return formatTokenAmount(rawMinimum, tokenOut.decimals, 6);
+    } catch {
+      return '0';
+    }
+  })();
+
   return {
     amountIn,
     amountOut,
+    minimumReceived, // W3-3: Consistent with contract calculation
     priceImpact,
     route,
     isLoadingQuote,

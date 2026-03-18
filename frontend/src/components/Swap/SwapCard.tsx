@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, memo } from 'react';
+import { useState, useCallback, memo } from 'react';
 import { motion } from 'framer-motion';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
@@ -6,25 +6,25 @@ import { InfoTooltip } from '../common/Tooltip';
 import { TokenInput } from './TokenInput';
 import { SwapSettings } from './SwapSettings';
 import { SwapConfirmationModal } from './SwapConfirmationModal';
-import { ApprovalButton, ApprovalStatus } from '../common/ApprovalButton';
 import { useSwap } from '../../hooks/useSwap';
-import { useSwapApproval } from '../../hooks/useTokenApproval';
 import { useWalletStore } from '../../stores/walletStore';
 import { useSettingsStore } from '../../stores/settingsStore';
-import { BASE_TOKENS } from '../../stores/tokenStore';
+import { useTokenStore } from '../../stores/tokenStore';
+import { DEFAULT_SWAP_PAIR } from '../../lib/constants';
 import type { Token } from '../../types';
-import { formatPercent, parseTokenAmount } from '../../lib/utils';
-
-// Default token pair for better UX - XLM/USDC is the most common pair
-const DEFAULT_TOKEN_IN = BASE_TOKENS[0]; // XLM
-const DEFAULT_TOKEN_OUT = BASE_TOKENS[1]; // USDC
+import { formatPercent } from '../../lib/utils';
 
 // Stable no-op callback for read-only inputs
 const NOOP = () => {};
 
 export const SwapCard = memo(function SwapCard() {
-  const [tokenIn, setTokenIn] = useState<Token | null>(DEFAULT_TOKEN_IN);
-  const [tokenOut, setTokenOut] = useState<Token | null>(DEFAULT_TOKEN_OUT);
+  // Get default tokens from store using centralized constants (not fragile array access)
+  const getToken = useTokenStore((state) => state.getToken);
+  const defaultTokenIn = getToken(DEFAULT_SWAP_PAIR.tokenIn) || null;
+  const defaultTokenOut = getToken(DEFAULT_SWAP_PAIR.tokenOut) || null;
+
+  const [tokenIn, setTokenIn] = useState<Token | null>(defaultTokenIn);
+  const [tokenOut, setTokenOut] = useState<Token | null>(defaultTokenOut);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   const isConnected = useWalletStore((state) => state.isConnected);
@@ -33,6 +33,7 @@ export const SwapCard = memo(function SwapCard() {
   const {
     amountIn,
     amountOut,
+    minimumReceived, // W3-3: Use consistent calculation from hook
     priceImpact,
     route,
     isLoadingQuote,
@@ -43,22 +44,6 @@ export const SwapCard = memo(function SwapCard() {
     switchTokens,
   } = useSwap(tokenIn, tokenOut);
 
-  // Convert amount to token decimals for approval check
-  const amountInForApproval = useMemo(() => {
-    if (!amountIn || !tokenIn) return '0';
-    return parseTokenAmount(amountIn, tokenIn.decimals);
-  }, [amountIn, tokenIn]);
-
-  // Token approval hook
-  const {
-    status: approvalStatus,
-    needsApproval,
-    isApproving,
-    isLoadingAllowance,
-    approve,
-    approveExact,
-  } = useSwapApproval(tokenIn?.address || null, amountInForApproval);
-
   const handleSwitchTokens = () => {
     const temp = tokenIn;
     setTokenIn(tokenOut);
@@ -66,7 +51,7 @@ export const SwapCard = memo(function SwapCard() {
     switchTokens();
   };
 
-  const canSwap = isConnected && tokenIn && tokenOut && parseFloat(amountIn) > 0 && parseFloat(amountOut) > 0 && !needsApproval;
+  const canSwap = isConnected && tokenIn && tokenOut && parseFloat(amountIn) > 0 && parseFloat(amountOut) > 0;
 
   const handleSwapClick = useCallback(() => {
     setShowConfirmModal(true);
@@ -80,10 +65,6 @@ export const SwapCard = memo(function SwapCard() {
   const handleCloseConfirmModal = useCallback(() => {
     setShowConfirmModal(false);
   }, []);
-
-  const minimumReceived = tokenOut && parseFloat(amountOut) > 0
-    ? (parseFloat(amountOut) * (1 - slippageTolerance / 100)).toFixed(6)
-    : '0';
 
   return (
     <Card className="max-w-md mx-auto">
@@ -217,14 +198,7 @@ export const SwapCard = memo(function SwapCard() {
         </div>
       )}
 
-      {/* Token Approval Status */}
-      {isConnected && tokenIn && parseFloat(amountIn) > 0 && (
-        <div className="mb-4">
-          <ApprovalStatus status={approvalStatus} tokenSymbol={tokenIn.symbol} />
-        </div>
-      )}
-
-      {/* Approval / Swap Button */}
+      {/* Swap Button */}
       {!isConnected ? (
         <Button fullWidth disabled>
           Connect Wallet
@@ -237,15 +211,6 @@ export const SwapCard = memo(function SwapCard() {
         <Button fullWidth disabled>
           Enter Amount
         </Button>
-      ) : needsApproval ? (
-        <ApprovalButton
-          tokenSymbol={tokenIn.symbol}
-          needsApproval={needsApproval}
-          isApproving={isApproving}
-          isLoadingAllowance={isLoadingAllowance}
-          onApprove={approve}
-          onApproveExact={approveExact}
-        />
       ) : (
         <Button
           onClick={handleSwapClick}
