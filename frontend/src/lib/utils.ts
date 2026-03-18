@@ -343,7 +343,7 @@ export function safeDivide(numerator: number, denominator: number): number {
 }
 
 /**
- * Calculate APR from reward rate
+ * Calculate APR from reward rate (H-4: using BigInt for precision)
  */
 export function calculateAPR(
   rewardRate: string,
@@ -351,15 +351,30 @@ export function calculateAPR(
   rewardTokenPrice: number,
   stakedTokenPrice: number
 ): number {
-  const dailyRewards = parseFloat(rewardRate) * 86400; // rewards per second * seconds in day
-  const yearlyRewards = dailyRewards * 365;
-  const yearlyRewardValue = yearlyRewards * rewardTokenPrice;
+  try {
+    const rewardRateBig = BigInt(rewardRate);
+    const totalStakedBig = BigInt(totalStaked);
 
-  const totalStakedValue = parseFloat(totalStaked) * stakedTokenPrice;
+    if (totalStakedBig === 0n) return 0;
 
-  if (totalStakedValue === 0) return 0;
+    // Calculate yearly rewards (seconds in year = 31536000)
+    const yearlyRewards = rewardRateBig * 31536000n;
 
-  return (yearlyRewardValue / totalStakedValue) * 100;
+    // Convert to number for price multiplication (maintaining precision as much as possible)
+    // Scale down by 1e7 (standard decimals) before converting to number
+    const DECIMALS_SCALE = 1_0000000n; // 1e7
+    const yearlyRewardsScaled = Number(yearlyRewards / DECIMALS_SCALE);
+    const totalStakedScaled = Number(totalStakedBig / DECIMALS_SCALE);
+
+    const yearlyRewardValue = yearlyRewardsScaled * rewardTokenPrice;
+    const totalStakedValue = totalStakedScaled * stakedTokenPrice;
+
+    if (totalStakedValue === 0) return 0;
+
+    return (yearlyRewardValue / totalStakedValue) * 100;
+  } catch {
+    return 0;
+  }
 }
 
 /**
