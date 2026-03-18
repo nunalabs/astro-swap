@@ -12,6 +12,7 @@
 import type { Token, TokenSource } from '../../types';
 import whitelistData from './whitelist.json';
 import { sanitizeLogoURI } from '../utils';
+import { LRUCache } from '../lru-cache';
 
 // Stellar network configuration
 const STELLAR_NETWORK = import.meta.env.VITE_STELLAR_NETWORK || 'testnet';
@@ -22,8 +23,10 @@ const STELLAR_EXPERT_NETWORK = STELLAR_NETWORK === 'mainnet' ? 'public' : 'testn
 
 // Cache settings
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-const tokenCache = new Map<string, { token: Token; timestamp: number }>();
-const searchCache = new Map<string, { results: Token[]; timestamp: number }>();
+
+// M-7: LRU caches to prevent unbounded memory growth
+const tokenCache = new LRUCache<string, { token: Token; timestamp: number }>(500);
+const searchCache = new LRUCache<string, { results: Token[]; timestamp: number }>(200);
 
 // Whitelist token interface (from JSON)
 interface WhitelistToken {

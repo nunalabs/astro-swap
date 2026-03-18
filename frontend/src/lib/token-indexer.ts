@@ -1,6 +1,8 @@
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { sorobanServer, NETWORK_PASSPHRASE } from './stellar';
 import { getAllPairs } from './contracts';
+import { createDummyAccount } from './constants';
+import { LRUCache } from './lru-cache';
 import type { Token } from '../types';
 
 /**
@@ -8,10 +10,11 @@ import type { Token } from '../types';
  * Automatically discovers and indexes tokens from the DEX factory and pairs
  *
  * PERFORMANCE: Uses batched parallel requests to minimize RPC calls (N+1 fix)
+ * SECURITY: M-7 - Uses LRU cache with max 1000 tokens to prevent memory exhaustion
  */
 
-// Cache for token metadata to avoid repeated calls
-const tokenMetadataCache = new Map<string, Token>();
+// M-7: LRU cache for token metadata (prevents unbounded growth)
+const tokenMetadataCache = new LRUCache<string, Token>(1000);
 
 // Pending requests map to deduplicate concurrent requests for same token
 const pendingRequests = new Map<string, Promise<Token | null>>();
@@ -53,10 +56,7 @@ export async function fetchTokenMetadata(tokenAddress: string): Promise<Token | 
 async function fetchTokenMetadataInternal(tokenAddress: string): Promise<Token | null> {
   try {
     // Create a dummy account for simulation
-    const dummyAccount = new StellarSdk.Account(
-      'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
-      '0'
-    );
+    const dummyAccount = createDummyAccount();
 
     const contract = new StellarSdk.Contract(tokenAddress);
 
@@ -93,17 +93,17 @@ async function fetchTokenMetadataInternal(tokenAddress: string): Promise<Token |
     ]);
 
     // Validate all results
-    if (!StellarSdk.SorobanRpc.Api.isSimulationSuccess(symbolResult)) {
+    if (!StellarSdk.rpc.Api.isSimulationSuccess(symbolResult)) {
       console.error(`Failed to fetch symbol for ${tokenAddress}`);
       return null;
     }
 
-    if (!StellarSdk.SorobanRpc.Api.isSimulationSuccess(nameResult)) {
+    if (!StellarSdk.rpc.Api.isSimulationSuccess(nameResult)) {
       console.error(`Failed to fetch name for ${tokenAddress}`);
       return null;
     }
 
-    if (!StellarSdk.SorobanRpc.Api.isSimulationSuccess(decimalsResult)) {
+    if (!StellarSdk.rpc.Api.isSimulationSuccess(decimalsResult)) {
       console.error(`Failed to fetch decimals for ${tokenAddress}`);
       return null;
     }
@@ -175,10 +175,7 @@ export async function getPairTokens(
   pairAddress: string
 ): Promise<{ token0: string; token1: string } | null> {
   try {
-    const dummyAccount = new StellarSdk.Account(
-      'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
-      '0'
-    );
+    const dummyAccount = createDummyAccount();
 
     const contract = new StellarSdk.Contract(pairAddress);
 
@@ -205,12 +202,12 @@ export async function getPairTokens(
       sorobanServer.simulateTransaction(token1Tx),
     ]);
 
-    if (!StellarSdk.SorobanRpc.Api.isSimulationSuccess(token0Result)) {
+    if (!StellarSdk.rpc.Api.isSimulationSuccess(token0Result)) {
       console.error(`Failed to fetch token0 for pair ${pairAddress}`);
       return null;
     }
 
-    if (!StellarSdk.SorobanRpc.Api.isSimulationSuccess(token1Result)) {
+    if (!StellarSdk.rpc.Api.isSimulationSuccess(token1Result)) {
       console.error(`Failed to fetch token1 for pair ${pairAddress}`);
       return null;
     }
