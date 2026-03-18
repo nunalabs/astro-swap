@@ -1,5 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useWalletStore } from '../stores/walletStore';
+import { useQuery, useMutation, useQueryClient } from '@tantml:function_calls>import { useWalletStore } from '../stores/walletStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useTokenStore } from '../stores/tokenStore';
 import {
@@ -15,6 +14,7 @@ import { getPairTokens, fetchTokenMetadata } from '../lib/token-indexer';
 import { parseTokenAmount, applySlippage } from '../lib/utils';
 import { HORIZON_SYNC_DELAY } from '../lib/constants';
 import { isReplayTransaction } from '../lib/tx-replay-guard';
+import { validateReserveFreshness } from '../lib/reserve-staleness';
 import type { Pool, Token } from '../types';
 
 export function usePool() {
@@ -193,6 +193,13 @@ export function usePool() {
           const reserves = await getReserves(pairAddress, address);
 
           if (reserves) {
+            // W3-2: Validate reserve data freshness
+            const stalenessError = validateReserveFreshness(reserves, 'liquidity check');
+            if (stalenessError) {
+              console.warn('⚠️ Reserve data is stale:', stalenessError);
+              // Continue with operation but log warning
+            }
+
             // Check if both reserves are zero (empty pool)
             const reserve0 = BigInt(reserves.reserve0);
             const reserve1 = BigInt(reserves.reserve1);

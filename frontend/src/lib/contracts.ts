@@ -172,7 +172,7 @@ export async function getPairAddress(
 export async function getReserves(
   pairAddress: string,
   sourceAddress: string
-): Promise<{ reserve0: string; reserve1: string } | null> {
+): Promise<{ reserve0: string; reserve1: string; timestamp: number } | null> {
   try {
     const result = await callContract(
       pairAddress,
@@ -195,6 +195,7 @@ export async function getReserves(
       const reserves = {
         reserve0: result[0]?.toString() || '0',
         reserve1: result[1]?.toString() || '0',
+        timestamp: Date.now(), // W3-2: Add timestamp for staleness validation
       };
       console.log('✅ Parsed reserves:', reserves);
       return reserves;
@@ -275,6 +276,7 @@ export async function getReservesForPair(
   reserveB: string;
   token0: string;
   token1: string;
+  timestamp: number; // W3-2: Timestamp for staleness validation
 } | null> {
   try {
     console.log('🔍 getReservesForPair called:', {
@@ -332,7 +334,14 @@ export async function getReservesForPair(
       reserveB,
     });
 
-    return { reserveA, reserveB, token0, token1 };
+    // W3-2: Include timestamp from reserves for staleness validation
+    return {
+      reserveA,
+      reserveB,
+      token0,
+      token1,
+      timestamp: reserves.timestamp,
+    };
   } catch (error) {
     console.error('❌ Error in getReservesForPair:', error);
     return null;

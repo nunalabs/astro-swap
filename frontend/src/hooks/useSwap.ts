@@ -10,6 +10,7 @@ import { useSwapSimulation } from './useSimulation';
 import { DUMMY_SIMULATION_ADDRESS, HORIZON_SYNC_DELAY } from '../lib/constants';
 import { MIN_TRADE_AMOUNT } from '../lib/constants/protocol';
 import { isReplayTransaction } from '../lib/tx-replay-guard';
+import { validateReserveFreshness } from '../lib/reserve-staleness';
 import type { Token } from '../types';
 
 export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
@@ -75,6 +76,13 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
           );
 
           if (reservesData) {
+            // W3-2: Validate reserve data freshness before using
+            const stalenessError = validateReserveFreshness(reservesData, 'price impact');
+            if (stalenessError) {
+              console.warn('⚠️ Reserve data is stale:', stalenessError);
+              // Use stale data but log warning - UI will refetch soon
+            }
+
             // reserveA corresponds to path[0] (tokenIn)
             // reserveB corresponds to path[1] (tokenOut)
             impact = calculatePriceImpact(reservesData.reserveA, reservesData.reserveB, rawAmountIn);
