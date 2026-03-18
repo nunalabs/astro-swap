@@ -271,9 +271,8 @@ export function usePool() {
       setTimeout(() => {
         // Invalidate with partial keys to catch all variants
         queryClient.invalidateQueries({ queryKey: ['pools', address] }); // Pools for this wallet
-        queryClient.invalidateQueries({ queryKey: ['token-balance'] }); // Partial match: all token balances
-        queryClient.invalidateQueries({ queryKey: ['token-balances'] }); // Legacy key
-        queryClient.invalidateQueries({ queryKey: ['all-token-balances'] }); // All token balances
+        queryClient.invalidateQueries({ queryKey: ['tokenBalance'] }); // Partial match: all individual balances
+        queryClient.invalidateQueries({ queryKey: ['allTokenBalances'] }); // All token balances
       }, HORIZON_SYNC_DELAY); // Wait for Horizon to sync
     },
   });
@@ -364,9 +363,8 @@ export function usePool() {
       setTimeout(() => {
         // Invalidate with partial keys to catch all variants
         queryClient.invalidateQueries({ queryKey: ['pools', address] }); // Pools for this wallet
-        queryClient.invalidateQueries({ queryKey: ['token-balance'] }); // Partial match: all token balances
-        queryClient.invalidateQueries({ queryKey: ['token-balances'] }); // Legacy key
-        queryClient.invalidateQueries({ queryKey: ['all-token-balances'] }); // All token balances
+        queryClient.invalidateQueries({ queryKey: ['tokenBalance'] }); // Partial match: all individual balances
+        queryClient.invalidateQueries({ queryKey: ['allTokenBalances'] }); // All token balances
       }, HORIZON_SYNC_DELAY); // Wait for Horizon to sync
     },
   });

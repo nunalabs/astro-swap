@@ -176,14 +176,15 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
         description: `Swapped ${amountIn} ${tokenIn?.symbol} for ${tokenOut?.symbol}`,
       });
 
-      // Simple refetch with delay - use invalidateQueries to force new object references
+      // Invalidate queries after swap to refresh UI
       setTimeout(() => {
-        // Invalidate with partial keys to catch all variants
-        queryClient.invalidateQueries({ queryKey: ['token-balance'] }); // Partial match: all token balances
-        queryClient.invalidateQueries({ queryKey: ['token-balances'] }); // Legacy key
-        queryClient.invalidateQueries({ queryKey: ['all-token-balances'] }); // All token balances
+        // Invalidate token balances (matches keys from useTokenBalance.ts)
+        queryClient.invalidateQueries({ queryKey: ['tokenBalance'] }); // Partial match: all individual balances
+        queryClient.invalidateQueries({ queryKey: ['allTokenBalances'] }); // All token balances
+
+        // Invalidate pools and quotes
         queryClient.invalidateQueries({ queryKey: ['pools', walletAddress] }); // Pools for this wallet
-        queryClient.invalidateQueries({ queryKey: ['swap-quote'] }); // Swap quotes
+        queryClient.invalidateQueries({ queryKey: ['swap-quote'] }); // Swap quotes to recalculate with new reserves
       }, HORIZON_SYNC_DELAY); // Wait for Horizon to sync
 
       // Reset form

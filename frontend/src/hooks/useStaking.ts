@@ -50,7 +50,8 @@ export function useStaking(poolId?: string) {
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ['stake-info'] });
         queryClient.invalidateQueries({ queryKey: ['staking-pools'] });
-        queryClient.invalidateQueries({ queryKey: ['token-balance'] });
+        queryClient.invalidateQueries({ queryKey: ['tokenBalance'] });
+        queryClient.invalidateQueries({ queryKey: ['allTokenBalances'] });
       }, HORIZON_SYNC_DELAY);
     },
     onError: (error) => {
@@ -83,7 +84,8 @@ export function useStaking(poolId?: string) {
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ['stake-info'] });
         queryClient.invalidateQueries({ queryKey: ['staking-pools'] });
-        queryClient.invalidateQueries({ queryKey: ['token-balance'] });
+        queryClient.invalidateQueries({ queryKey: ['tokenBalance'] });
+        queryClient.invalidateQueries({ queryKey: ['allTokenBalances'] });
       }, HORIZON_SYNC_DELAY);
     },
     onError: (error) => {
@@ -113,7 +115,8 @@ export function useStaking(poolId?: string) {
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ['stake-info'] });
         queryClient.invalidateQueries({ queryKey: ['staking-pools'] });
-        queryClient.invalidateQueries({ queryKey: ['token-balance'] });
+        queryClient.invalidateQueries({ queryKey: ['tokenBalance'] });
+        queryClient.invalidateQueries({ queryKey: ['allTokenBalances'] });
       }, HORIZON_SYNC_DELAY);
     },
     onError: (error) => {

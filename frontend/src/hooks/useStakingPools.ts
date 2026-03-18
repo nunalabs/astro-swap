@@ -218,7 +218,8 @@ export function useStakingPools() {
     setTimeout(() => {
       queryClient.invalidateQueries({ queryKey: ['staking-pools'] });
       queryClient.invalidateQueries({ queryKey: ['stake-info'] });
-      queryClient.invalidateQueries({ queryKey: ['token-balance'] });
+      queryClient.invalidateQueries({ queryKey: ['tokenBalance'] });
+      queryClient.invalidateQueries({ queryKey: ['allTokenBalances'] });
     }, HORIZON_SYNC_DELAY);
   };
 
