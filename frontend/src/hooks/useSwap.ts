@@ -95,6 +95,7 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
         rawAmountOut: rawOutputAmount,
         priceImpact: impact,
         path: path,
+        timestamp: Date.now(), // H-2: Add timestamp for staleness check
       };
     },
     enabled: !!tokenIn && !!tokenOut && !!amountIn && parseFloat(amountIn) > 0 && !!address,
@@ -288,6 +289,20 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
       return;
     }
 
+    // Check quote staleness (H-2: Stale quote TOCTOU)
+    const QUOTE_STALENESS_THRESHOLD = 15000; // 15 seconds
+    if (quoteData && quoteData.timestamp) {
+      const age = Date.now() - quoteData.timestamp;
+      if (age > QUOTE_STALENESS_THRESHOLD) {
+        addToast({
+          type: 'warning',
+          title: 'Quote Expired',
+          description: 'Price quote is outdated. Please try again.',
+        });
+        return;
+      }
+    }
+
     // Set both ref (atomic) and state (UI) locks
     isSubmittingRef.current = true;
     setIsSubmitting(true);
@@ -308,7 +323,7 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
       throw error;
     }
     // Note: isSubmittingRef.current is reset in mutation callbacks (onSuccess/onError)
-  }, [tokenIn, tokenOut, amountIn, amountOut, swapMutation, addToast, validateSwap]);
+  }, [tokenIn, tokenOut, amountIn, amountOut, swapMutation, addToast, validateSwap, quoteData]);
 
   const switchTokens = useCallback(() => {
     setAmountIn(amountOut);
