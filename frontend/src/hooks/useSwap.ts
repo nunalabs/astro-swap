@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useWalletStore } from '../stores/walletStore';
 import { useSettingsStore } from '../stores/settingsStore';
@@ -16,6 +16,9 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
   const [priceImpact, setPriceImpact] = useState(0);
   const [route, setRoute] = useState<Token[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Atomic lock to prevent race conditions (fixes H-1 TOCTOU vulnerability)
+  const isSubmittingRef = useRef(false);
 
   const walletAddress = useWalletStore((state) => state.address);
   const slippageTolerance = useSettingsStore((state) => state.slippageTolerance);
@@ -187,9 +190,11 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
         queryClient.invalidateQueries({ queryKey: ['swap-quote'] }); // Swap quotes to recalculate with new reserves
       }, HORIZON_SYNC_DELAY); // Wait for Horizon to sync
 
-      // Reset form
+      // Reset form and unlock
       setAmountIn('');
       setAmountOut('');
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
     },
     onError: (error, _variables, context) => {
       // Update transaction to failed status
@@ -201,6 +206,10 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
 
       const errorToast = formatErrorForToast(error);
       addToast(errorToast);
+
+      // Unlock after error
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
     },
   });
 
@@ -243,8 +252,8 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
   }, [tokenIn, tokenOut, amountIn, amountOut, walletAddress, route, slippageTolerance, deadline, simulateSwap, addToast, quoteData]);
 
   const swap = useCallback(async () => {
-    // Guard against concurrent submissions
-    if (isSubmitting) {
+    // Atomic guard against concurrent submissions (fixes H-1 race condition)
+    if (isSubmittingRef.current) {
       console.warn('Swap already in progress, ignoring duplicate submission');
       return;
     }
@@ -258,21 +267,27 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
       return;
     }
 
+    // Set both ref (atomic) and state (UI) locks
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
 
     try {
       // Pre-validate with simulation
       const isValid = await validateSwap();
       if (!isValid) {
+        isSubmittingRef.current = false;
+        setIsSubmitting(false);
         return;
       }
 
       swapMutation.mutate();
-    } finally {
-      // Reset after mutation completes or fails
+    } catch (error) {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
+      throw error;
     }
-  }, [isSubmitting, tokenIn, tokenOut, amountIn, amountOut, swapMutation, addToast, validateSwap]);
+    // Note: isSubmittingRef.current is reset in mutation callbacks (onSuccess/onError)
+  }, [tokenIn, tokenOut, amountIn, amountOut, swapMutation, addToast, validateSwap]);
 
   const switchTokens = useCallback(() => {
     setAmountIn(amountOut);
