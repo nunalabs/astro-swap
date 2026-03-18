@@ -18,13 +18,44 @@ const DEFAULT_SETTINGS: UserSettings = {
   language: 'en',
 };
 
+// M-3: Validation constants
+const MIN_SLIPPAGE = 0;
+const MAX_SLIPPAGE = 50; // Maximum 50% slippage
+const MIN_DEADLINE = 1;
+const MAX_DEADLINE = 180; // Maximum 3 hours
+
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   ...DEFAULT_SETTINGS,
   toasts: [],
 
   updateSettings: (settings: Partial<UserSettings>) => {
     set((state) => {
-      const newSettings = { ...state, ...settings };
+      // M-3: Validate settings before applying
+      const validatedSettings = { ...settings };
+
+      // Validate slippage tolerance
+      if (validatedSettings.slippageTolerance !== undefined) {
+        const slippage = validatedSettings.slippageTolerance;
+        if (slippage < MIN_SLIPPAGE || slippage > MAX_SLIPPAGE) {
+          console.warn(
+            `Invalid slippage ${slippage}%, must be between ${MIN_SLIPPAGE} and ${MAX_SLIPPAGE}. Using default.`
+          );
+          validatedSettings.slippageTolerance = DEFAULT_SETTINGS.slippageTolerance;
+        }
+      }
+
+      // Validate deadline
+      if (validatedSettings.deadline !== undefined) {
+        const deadline = validatedSettings.deadline;
+        if (deadline < MIN_DEADLINE || deadline > MAX_DEADLINE) {
+          console.warn(
+            `Invalid deadline ${deadline}min, must be between ${MIN_DEADLINE} and ${MAX_DEADLINE}. Using default.`
+          );
+          validatedSettings.deadline = DEFAULT_SETTINGS.deadline;
+        }
+      }
+
+      const newSettings = { ...state, ...validatedSettings };
 
       // Save to localStorage
       const settingsToSave: UserSettings = {
@@ -69,13 +100,38 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 }));
 
-// Load settings from localStorage
-const storedSettings = localStorage.getItem('astroswap_settings');
-if (storedSettings) {
-  try {
-    const settings = JSON.parse(storedSettings);
-    useSettingsStore.setState(settings);
-  } catch (error) {
-    console.error('Error loading settings:', error);
+// Load settings from localStorage (with SSR guard)
+if (typeof window !== 'undefined') {
+  const storedSettings = localStorage.getItem('astroswap_settings');
+  if (storedSettings) {
+    try {
+      const settings = JSON.parse(storedSettings) as Partial<UserSettings>;
+
+      // M-3: Validate loaded settings
+      const validatedSettings: Partial<UserSettings> = { ...settings };
+
+      // Validate slippage
+      if (
+        validatedSettings.slippageTolerance !== undefined &&
+        (validatedSettings.slippageTolerance < MIN_SLIPPAGE ||
+          validatedSettings.slippageTolerance > MAX_SLIPPAGE)
+      ) {
+        console.warn('Invalid stored slippage, using default');
+        validatedSettings.slippageTolerance = DEFAULT_SETTINGS.slippageTolerance;
+      }
+
+      // Validate deadline
+      if (
+        validatedSettings.deadline !== undefined &&
+        (validatedSettings.deadline < MIN_DEADLINE || validatedSettings.deadline > MAX_DEADLINE)
+      ) {
+        console.warn('Invalid stored deadline, using default');
+        validatedSettings.deadline = DEFAULT_SETTINGS.deadline;
+      }
+
+      useSettingsStore.setState(validatedSettings);
+    } catch (error) {
+      console.error('Error loading settings:', error);
+    }
   }
 }
