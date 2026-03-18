@@ -305,8 +305,23 @@ export function usePool() {
           const reserve0BigInt = BigInt(pool.reserve0);
           const reserve1BigInt = BigInt(pool.reserve1);
 
-          const expectedAmountA = (liquidityBigInt * reserve0BigInt) / totalSupplyBigInt;
-          const expectedAmountB = (liquidityBigInt * reserve1BigInt) / totalSupplyBigInt;
+          // 🔥 FIX: Determine which reserve corresponds to which token
+          // pool.reserve0 corresponds to pool.token0, NOT necessarily to tokenA!
+          let reserveA: bigint;
+          let reserveB: bigint;
+
+          if (tokenA.address === pool.token0.address) {
+            // tokenA is pool.token0, tokenB is pool.token1
+            reserveA = reserve0BigInt;
+            reserveB = reserve1BigInt;
+          } else {
+            // tokenA is pool.token1, tokenB is pool.token0
+            reserveA = reserve1BigInt;
+            reserveB = reserve0BigInt;
+          }
+
+          const expectedAmountA = (liquidityBigInt * reserveA) / totalSupplyBigInt;
+          const expectedAmountB = (liquidityBigInt * reserveB) / totalSupplyBigInt;
 
           // FIXED: Use centralized applySlippage() instead of inline calculation
           amountAMin = applySlippage(expectedAmountA.toString(), slippageTolerance);

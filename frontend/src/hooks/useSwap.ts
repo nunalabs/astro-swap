@@ -3,10 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useWalletStore } from '../stores/walletStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useTransactionStore } from '../stores/transactionStore';
-import { getAmountsOut, swapExactTokensForTokens, calculateOptimalPath } from '../lib/contracts';
+import { getAmountsOut, swapExactTokensForTokens, calculateOptimalPath, getPairAddress, getReservesForPair } from '../lib/contracts';
 import { calculatePriceImpact, parseTokenAmount, formatTokenAmount, applySlippage } from '../lib/utils';
 import { formatErrorForToast } from '../lib/errors';
 import { useSwapSimulation } from './useSimulation';
+import { DUMMY_SIMULATION_ADDRESS, HORIZON_SYNC_DELAY } from '../lib/constants';
 import type { Token } from '../types';
 
 export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
@@ -14,15 +15,14 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
   const [amountOut, setAmountOut] = useState('');
   const [priceImpact, setPriceImpact] = useState(0);
   const [route, setRoute] = useState<Token[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const walletAddress = useWalletStore((state) => state.address);
   const slippageTolerance = useSettingsStore((state) => state.slippageTolerance);
 
-  // Use a fallback address for quotes when wallet is not connected
-  // This allows users to see rates before connecting
-  // Using a valid funded testnet address for simulation
-  const QUOTE_FALLBACK_ADDRESS = 'GAYES36VZUWL437CC2IIJ7OUCWYWESEOJ6GITMTCHEF6OOYWIUNBKVXI';
-  const address = walletAddress || QUOTE_FALLBACK_ADDRESS;
+  // Use dummy simulation address for quotes when wallet is not connected
+  // This allows users to see rates before connecting without exposing any real address
+  const address = walletAddress || DUMMY_SIMULATION_ADDRESS;
   const deadline = useSettingsStore((state) => state.deadline);
   const addToast = useSettingsStore((state) => state.addToast);
   const addTransaction = useTransactionStore((state) => state.addTransaction);
@@ -54,8 +54,36 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
       const rawOutputAmount = amounts[amounts.length - 1];
       const outputAmount = formatTokenAmount(rawOutputAmount, tokenOut.decimals, 7);
 
-      // Calculate price impact (simplified)
-      const impact = calculatePriceImpact('1000000', '1000000', rawAmountIn);
+      // 🔥 FIX: Calculate price impact with REAL reserves (not hardcoded!)
+      let impact = 0;
+      try {
+        // Get the first pair address for price impact calculation
+        const firstPairAddress = await getPairAddress(path[0], path[1], address);
+
+        if (firstPairAddress) {
+          // Use getReservesForPair to ensure correct reserve ordering
+          const reservesData = await getReservesForPair(
+            firstPairAddress,
+            path[0],  // tokenIn
+            path[1],  // tokenOut (for first hop)
+            address
+          );
+
+          if (reservesData) {
+            // reserveA corresponds to path[0] (tokenIn)
+            // reserveB corresponds to path[1] (tokenOut)
+            impact = calculatePriceImpact(reservesData.reserveA, reservesData.reserveB, rawAmountIn);
+            console.log('✅ Price impact calculated with real reserves:', {
+              reserveIn: reservesData.reserveA,
+              reserveOut: reservesData.reserveB,
+              impact: `${(impact * 100).toFixed(2)}%`,
+            });
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error calculating price impact:', error);
+        // If we can't calculate, leave it at 0
+      }
 
       return {
         amountOut: outputAmount,
@@ -67,6 +95,8 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
     },
     enabled: !!tokenIn && !!tokenOut && !!amountIn && parseFloat(amountIn) > 0 && !!address,
     staleTime: 10000, // 10 seconds
+    refetchOnWindowFocus: true, // 🔥 NEW: Refetch when user returns to tab
+    refetchOnMount: true, // 🔥 NEW: Refetch on mount
   });
 
   // Update output amount when quote changes
@@ -108,9 +138,9 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
         rawAmountIn,
         rawAmountOutMin,
         pathAddresses,
-        walletAddress,
+        walletAddress, // to parameter
         deadlineTimestamp,
-        walletAddress
+        walletAddress  // sourceAddress
       );
     },
     onMutate: () => {
@@ -131,7 +161,7 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
         return { pendingHash };
       }
     },
-    onSuccess: (txHash, _variables, context) => {
+    onSuccess: async (txHash, _variables, context) => {
       // Update transaction with real hash and success status
       if (context?.pendingHash) {
         updateTransaction(context.pendingHash, {
@@ -146,10 +176,15 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
         description: `Swapped ${amountIn} ${tokenIn?.symbol} for ${tokenOut?.symbol}`,
       });
 
-      // PERFORMANCE: Invalidate balance queries instead of polling
-      queryClient.invalidateQueries({ queryKey: ['tokenBalance'] });
-      queryClient.invalidateQueries({ queryKey: ['token-balances'] });
-      queryClient.invalidateQueries({ queryKey: ['allTokenBalances'] });
+      // Simple refetch with delay - use invalidateQueries to force new object references
+      setTimeout(() => {
+        // Invalidate with partial keys to catch all variants
+        queryClient.invalidateQueries({ queryKey: ['token-balance'] }); // Partial match: all token balances
+        queryClient.invalidateQueries({ queryKey: ['token-balances'] }); // Legacy key
+        queryClient.invalidateQueries({ queryKey: ['all-token-balances'] }); // All token balances
+        queryClient.invalidateQueries({ queryKey: ['pools', walletAddress] }); // Pools for this wallet
+        queryClient.invalidateQueries({ queryKey: ['swap-quote'] }); // Swap quotes
+      }, HORIZON_SYNC_DELAY); // Wait for Horizon to sync
 
       // Reset form
       setAmountIn('');
@@ -182,12 +217,8 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
     const pathAddresses = route.map((t) => t.address);
     // Use raw amounts for validation
     const rawAmountIn = quoteData.rawAmountIn;
-    // Calculate slippage: multiply by (100 - slippage) / 100
-    // Use integer math: multiply by (10000 - slippage*100) / 10000
-    const slippageBps = Math.floor(slippageTolerance * 100);
-    const rawAmountOutMin = (
-      BigInt(quoteData.rawAmountOut) * BigInt(10000 - slippageBps) / 10000n
-    ).toString();
+    // FIXED: Use centralized applySlippage() instead of inline calculation
+    const rawAmountOutMin = applySlippage(quoteData.rawAmountOut, slippageTolerance);
     const deadlineTimestamp = Math.floor(Date.now() / 1000) + deadline * 60;
 
     const result = await simulateSwap({
@@ -211,6 +242,12 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
   }, [tokenIn, tokenOut, amountIn, amountOut, walletAddress, route, slippageTolerance, deadline, simulateSwap, addToast, quoteData]);
 
   const swap = useCallback(async () => {
+    // Guard against concurrent submissions
+    if (isSubmitting) {
+      console.warn('Swap already in progress, ignoring duplicate submission');
+      return;
+    }
+
     if (!tokenIn || !tokenOut || !amountIn || !amountOut) {
       addToast({
         type: 'warning',
@@ -220,14 +257,21 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
       return;
     }
 
-    // Pre-validate with simulation
-    const isValid = await validateSwap();
-    if (!isValid) {
-      return;
-    }
+    setIsSubmitting(true);
 
-    swapMutation.mutate();
-  }, [tokenIn, tokenOut, amountIn, amountOut, swapMutation, addToast, validateSwap]);
+    try {
+      // Pre-validate with simulation
+      const isValid = await validateSwap();
+      if (!isValid) {
+        return;
+      }
+
+      swapMutation.mutate();
+    } finally {
+      // Reset after mutation completes or fails
+      setIsSubmitting(false);
+    }
+  }, [isSubmitting, tokenIn, tokenOut, amountIn, amountOut, swapMutation, addToast, validateSwap]);
 
   const switchTokens = useCallback(() => {
     setAmountIn(amountOut);
@@ -240,7 +284,7 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
     priceImpact,
     route,
     isLoadingQuote,
-    isSwapping: swapMutation.isPending,
+    isSwapping: swapMutation.isPending || isSubmitting,
     isSimulating,
     simulationError,
     setAmountIn: handleAmountInChange,
