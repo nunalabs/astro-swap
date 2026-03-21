@@ -1,0 +1,20 @@
+{
+  "network": "testnet",
+  "description": "AstroSwap Testnet Configuration - Permissive settings for testing",
+  "factory": {
+    "public_pair_creation": true,
+    "protocol_fee_bps": 30,
+    "paused": false
+  },
+  "router": {
+    "paused": false
+  },
+  "staking": {
+    "paused": false
+  },
+  "notes": {
+    "public_pair_creation": "true = Anyone can create pools (recommended for testnet)",
+    "protocol_fee_bps": "30 = 0.30% protocol fee (0.25% to LPs + 0.05% to treasury)",
+    "paused": "false = Contracts are active"
+  }
+}

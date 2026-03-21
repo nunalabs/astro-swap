@@ -5,6 +5,7 @@ import { useTokenStore } from '../../stores/tokenStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { isValidContractId } from '../../lib/utils';
 import { sorobanServer, NETWORK_PASSPHRASE } from '../../lib/stellar';
+import { createDummyAccount } from '../../lib/constants';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import type { Token } from '../../types';
 
@@ -34,10 +35,7 @@ export const AddTokenModal = memo(function AddTokenModal({ isOpen, onClose }: Ad
 
     try {
       // Create a dummy account for simulation
-      const dummyAccount = new StellarSdk.Account(
-        'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
-        '0'
-      );
+      const dummyAccount = createDummyAccount();
 
       const contract = new StellarSdk.Contract(address);
 
@@ -52,7 +50,7 @@ export const AddTokenModal = memo(function AddTokenModal({ isOpen, onClose }: Ad
 
       const symbolResult = await sorobanServer.simulateTransaction(symbolTx);
 
-      if (!StellarSdk.SorobanRpc.Api.isSimulationSuccess(symbolResult)) {
+      if (!StellarSdk.rpc.Api.isSimulationSuccess(symbolResult)) {
         throw new Error('Failed to fetch token symbol');
       }
 
@@ -69,7 +67,7 @@ export const AddTokenModal = memo(function AddTokenModal({ isOpen, onClose }: Ad
 
       const nameResult = await sorobanServer.simulateTransaction(nameTx);
 
-      if (!StellarSdk.SorobanRpc.Api.isSimulationSuccess(nameResult)) {
+      if (!StellarSdk.rpc.Api.isSimulationSuccess(nameResult)) {
         throw new Error('Failed to fetch token name');
       }
 
@@ -86,7 +84,7 @@ export const AddTokenModal = memo(function AddTokenModal({ isOpen, onClose }: Ad
 
       const decimalsResult = await sorobanServer.simulateTransaction(decimalsTx);
 
-      if (!StellarSdk.SorobanRpc.Api.isSimulationSuccess(decimalsResult)) {
+      if (!StellarSdk.rpc.Api.isSimulationSuccess(decimalsResult)) {
         throw new Error('Failed to fetch token decimals');
       }
 

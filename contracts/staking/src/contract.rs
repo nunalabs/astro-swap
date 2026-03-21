@@ -189,6 +189,9 @@ impl AstroSwapStaking {
     ) -> Result<(), AstroSwapError> {
         user.require_auth();
 
+        // Check contract is not paused - prevent withdrawals during emergency
+        Self::require_not_paused(&env)?;
+
         // RAII guard - automatically releases lock when function returns
         let _guard = ReentrancyGuard::acquire(&env, is_locked, set_locked)?;
 
@@ -311,23 +314,75 @@ impl AstroSwapStaking {
     }
 
     /// Compound rewards back into stake (if reward token == LP token)
+    ///
+    /// # Security
+    /// This is an ATOMIC operation that claims and re-stakes rewards within
+    /// a single ReentrancyGuard. This prevents state inconsistencies that could
+    /// occur if claim and stake were called separately.
+    ///
+    /// # Access Control
+    /// Requires user authentication
     pub fn compound(env: Env, user: Address, pool_id: u32) -> Result<i128, AstroSwapError> {
         user.require_auth();
 
-        let pool = get_pool(&env, pool_id).ok_or(AstroSwapError::StakingPoolNotFound)?;
+        // RAII guard - covers ENTIRE compound operation atomically
+        let _guard = ReentrancyGuard::acquire(&env, is_locked, set_locked)?;
+
+        let mut pool = get_pool(&env, pool_id).ok_or(AstroSwapError::StakingPoolNotFound)?;
 
         // Can only compound if reward token is the LP token
         if pool.reward_token != pool.lp_token {
             return Err(AstroSwapError::InvalidArgument);
         }
 
-        // Claim rewards
-        let rewards = Self::claim_rewards(env.clone(), user.clone(), pool_id)?;
+        // Update pool rewards
+        Self::update_pool(&env, &mut pool)?;
 
-        // Stake the rewards
-        Self::stake(env, user, pool_id, rewards)?;
+        let mut user_stake =
+            get_user_stake(&env, &user, pool_id).ok_or(AstroSwapError::StakeNotFound)?;
 
-        Ok(rewards)
+        // Calculate pending rewards
+        let pending = Self::calculate_pending_rewards(&pool, &user_stake)?;
+
+        if pending == 0 {
+            return Err(AstroSwapError::NoRewardsAvailable);
+        }
+
+        // Apply multiplier
+        let multiplier = Self::get_current_multiplier(&env, &user_stake);
+        let boosted_reward = safe_div(
+            safe_mul(pending, i128::from(multiplier))?,
+            i128::from(BPS_DENOMINATOR),
+        )?;
+
+        // Instead of transferring rewards out, we directly add them to the stake
+        // This is the "compound" operation - rewards become stake
+        user_stake.amount = safe_add(user_stake.amount, boosted_reward)?;
+
+        // Update reward debt for the NEW total stake amount
+        user_stake.reward_debt = safe_div(
+            safe_mul(user_stake.amount, pool.acc_reward_per_share)?,
+            REWARD_PRECISION,
+        )?;
+
+        // Update pool total_staked
+        pool.total_staked = safe_add(pool.total_staked, boosted_reward)?;
+
+        // Save state
+        set_pool(&env, pool_id, &pool);
+        set_user_stake(&env, &user, pool_id, &user_stake);
+
+        // Emit claim event (rewards were claimed and compounded)
+        emit_claim(&env, &user, pool_id, boosted_reward);
+        // Emit stake event (rewards were re-staked)
+        emit_stake(&env, &user, pool_id, boosted_reward);
+
+        extend_instance_ttl(&env);
+        extend_pool_ttl(&env, pool_id);
+        extend_user_stake_ttl(&env, &user, pool_id);
+
+        // Lock automatically released when _guard goes out of scope
+        Ok(boosted_reward)
     }
 
     // ==================== Admin Functions ====================
@@ -356,13 +411,22 @@ impl AstroSwapStaking {
     }
 
     /// Fund the reward pool
-    pub fn fund_rewards(env: Env, funder: Address, amount: i128) -> Result<(), AstroSwapError> {
-        funder.require_auth();
+    ///
+    /// # Security
+    /// Only admin can fund rewards to prevent:
+    /// 1. Attackers depositing worthless tokens if reward_token changes
+    /// 2. Dilution attacks with fake reward tokens
+    /// 3. Spamming the contract with unwanted deposits
+    ///
+    /// # Access Control
+    /// Requires admin authentication
+    pub fn fund_rewards(env: Env, admin: Address, amount: i128) -> Result<(), AstroSwapError> {
+        Self::require_admin(&env, &admin)?;
 
         let reward_token = get_reward_token(&env).ok_or(AstroSwapError::NotInitialized)?;
         let token_client = token::Client::new(&env, &reward_token);
 
-        token_client.transfer(&funder, env.current_contract_address(), &amount);
+        token_client.transfer(&admin, env.current_contract_address(), &amount);
 
         extend_instance_ttl(&env);
 
@@ -573,13 +637,12 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register(AstroSwapStaking, ());
-        let client = AstroSwapStakingClient::new(&env, &contract_id);
-
         let admin = Address::generate(&env);
         let reward_token = Address::generate(&env);
 
-        client.initialize(&admin, &reward_token);
+        // Register with CAP-58 constructor
+        let contract_id = env.register(AstroSwapStaking, (admin.clone(), reward_token.clone()));
+        let client = AstroSwapStakingClient::new(&env, &contract_id);
 
         assert_eq!(client.admin(), admin);
         assert_eq!(client.reward_token(), Some(reward_token));

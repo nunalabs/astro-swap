@@ -127,6 +127,88 @@ export class PairClient extends BaseContractClient {
   }
 
   /**
+   * Deposit liquidity to get LP tokens
+   *
+   * @param user - User address depositing liquidity
+   * @param amount0Desired - Desired amount of token0
+   * @param amount1Desired - Desired amount of token1
+   * @param amount0Min - Minimum amount of token0 (slippage protection)
+   * @param amount1Min - Minimum amount of token1 (slippage protection)
+   * @param deadline - Unix timestamp after which transaction expires (MEV protection)
+   * @returns Promise with transaction result containing (amount0Used, amount1Used, sharesMinted)
+   *
+   * @example
+   * ```typescript
+   * const deadline = Math.floor(Date.now() / 1000) + 300; // 5 minutes from now
+   * const result = await pair.deposit(
+   *   userAddress,
+   *   1000000000n,  // 100 tokens (assuming 7 decimals)
+   *   1000000000n,
+   *   950000000n,   // 5% slippage tolerance
+   *   950000000n,
+   *   deadline
+   * );
+   * ```
+   */
+  async deposit(
+    user: string,
+    amount0Desired: bigint,
+    amount1Desired: bigint,
+    amount0Min: bigint,
+    amount1Min: bigint,
+    deadline: number
+  ): Promise<TransactionResult<{ amount0: bigint; amount1: bigint; shares: bigint }>> {
+    return this.execute<{ amount0: bigint; amount1: bigint; shares: bigint }>(
+      'deposit',
+      this.addressToScVal(user),
+      this.i128ToScVal(amount0Desired),
+      this.i128ToScVal(amount1Desired),
+      this.i128ToScVal(amount0Min),
+      this.i128ToScVal(amount1Min),
+      this.u64ToScVal(deadline)
+    );
+  }
+
+  /**
+   * Withdraw liquidity by burning LP tokens
+   *
+   * @param user - User address withdrawing liquidity
+   * @param shares - Amount of LP tokens to burn
+   * @param amount0Min - Minimum amount of token0 to receive (slippage protection)
+   * @param amount1Min - Minimum amount of token1 to receive (slippage protection)
+   * @param deadline - Unix timestamp after which transaction expires (MEV protection)
+   * @returns Promise with transaction result containing (amount0Received, amount1Received)
+   *
+   * @example
+   * ```typescript
+   * const deadline = Math.floor(Date.now() / 1000) + 300; // 5 minutes from now
+   * const result = await pair.withdraw(
+   *   userAddress,
+   *   100000000n,  // LP tokens to burn
+   *   950000000n,  // Min token0 (5% slippage)
+   *   950000000n,  // Min token1 (5% slippage)
+   *   deadline
+   * );
+   * ```
+   */
+  async withdraw(
+    user: string,
+    shares: bigint,
+    amount0Min: bigint,
+    amount1Min: bigint,
+    deadline: number
+  ): Promise<TransactionResult<{ amount0: bigint; amount1: bigint }>> {
+    return this.execute<{ amount0: bigint; amount1: bigint }>(
+      'withdraw',
+      this.addressToScVal(user),
+      this.i128ToScVal(shares),
+      this.i128ToScVal(amount0Min),
+      this.i128ToScVal(amount1Min),
+      this.u64ToScVal(deadline)
+    );
+  }
+
+  /**
    * Sync reserves with actual balances
    */
   async sync(): Promise<TransactionResult<void>> {

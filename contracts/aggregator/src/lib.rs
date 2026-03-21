@@ -19,6 +19,9 @@
 
 mod storage;
 
+#[cfg(test)]
+mod security_tests;
+
 use astroswap_shared::{
     reentrancy::ReentrancyGuard, AstroSwapError, PairClient, Protocol, RouteStep, SwapRoute,
 };

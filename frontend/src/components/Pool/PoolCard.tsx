@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import type { Pool } from '../../types';
-import { formatNumber, formatCurrency, formatPercent } from '../../lib/utils';
+import { formatNumber, formatCurrency, formatPercent, formatTokenAmount } from '../../lib/utils';
 
 interface PoolCardProps {
   pool: Pool;
@@ -42,11 +42,11 @@ export const PoolCard = memo(function PoolCard({ pool, onAddLiquidity, onRemoveL
         </div>
         <div>
           <p className="text-xs text-neutral-400 mb-1">{pool.token0.symbol} Reserve</p>
-          <p className="font-mono text-sm">{formatNumber(parseFloat(pool.reserve0), 2)}</p>
+          <p className="font-mono text-sm">{formatTokenAmount(pool.reserve0, pool.token0.decimals, 2)}</p>
         </div>
         <div>
           <p className="text-xs text-neutral-400 mb-1">{pool.token1.symbol} Reserve</p>
-          <p className="font-mono text-sm">{formatNumber(parseFloat(pool.reserve1), 2)}</p>
+          <p className="font-mono text-sm">{formatTokenAmount(pool.reserve1, pool.token1.decimals, 2)}</p>
         </div>
       </div>
 

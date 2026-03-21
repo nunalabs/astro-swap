@@ -225,6 +225,14 @@ export abstract class BaseContractClient {
   }
 
   /**
+   * Convert u64 to ScVal
+   */
+  protected u64ToScVal(value: number | bigint): xdr.ScVal {
+    const bigValue = typeof value === 'number' ? BigInt(value) : value;
+    return xdr.ScVal.scvU64(xdr.Uint64.fromString(bigValue.toString()));
+  }
+
+  /**
    * Convert symbol to ScVal
    */
   protected symbolToScVal(value: string): xdr.ScVal {

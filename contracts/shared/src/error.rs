@@ -40,6 +40,7 @@ pub enum AstroSwapError {
     InvalidPath = 304,
     PriceImpactTooHigh = 305,
     AmountBelowMinimum = 306,
+    KInvariantViolation = 307,
 
     // Staking errors (400-499)
     StakingPoolNotFound = 400,

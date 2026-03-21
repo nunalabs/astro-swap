@@ -1,0 +1,336 @@
+/**
+ * Stellar Helpers - Unit Tests
+ *
+ * Strategy: Test network config, helper functions with mocked SDK
+ * Coverage: getAccountBalance, getTokenBalance, simulateTransaction
+ */
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as stellar from '../stellar';
+import * as StellarSdk from '@stellar/stellar-sdk';
+
+// Mock rate limiter to execute immediately
+vi.mock('../rate-limiter', () => ({
+  rpcLimiter: {
+    execute: vi.fn((fn) => fn()),
+  },
+}));
+
+describe('Stellar Helpers', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe('Network Configuration', () => {
+    it('should export correct network passphrase for testnet', () => {
+      expect(stellar.NETWORK_PASSPHRASE).toBe(StellarSdk.Networks.TESTNET);
+    });
+
+    it('should export correct Horizon URL for testnet', () => {
+      expect(stellar.HORIZON_URL).toBe('https://horizon-testnet.stellar.org');
+    });
+
+    it('should export Soroban RPC URL', () => {
+      expect(stellar.SOROBAN_RPC_URL).toBeDefined();
+      expect(typeof stellar.SOROBAN_RPC_URL).toBe('string');
+    });
+
+    it('should initialize Horizon server', () => {
+      expect(stellar.server).toBeDefined();
+      expect(stellar.server).toBeInstanceOf(StellarSdk.Horizon.Server);
+    });
+
+    it('should initialize Soroban RPC server', () => {
+      expect(stellar.sorobanServer).toBeDefined();
+      expect(stellar.sorobanServer).toBeInstanceOf(StellarSdk.rpc.Server);
+    });
+  });
+
+  describe('getAccountBalance', () => {
+    it('should return native balance for valid account', async () => {
+      const mockAccount = {
+        balances: [
+          {
+            asset_type: 'native',
+            balance: '1000.5000000',
+          },
+        ],
+      };
+
+      vi.spyOn(stellar.server, 'loadAccount').mockResolvedValue(mockAccount as any);
+
+      const balance = await stellar.getAccountBalance('GABC123');
+
+      expect(balance).toBe('1000.5000000');
+      expect(stellar.server.loadAccount).toHaveBeenCalledWith('GABC123');
+    });
+
+    it('should return 0 if account has no native balance', async () => {
+      const mockAccount = {
+        balances: [
+          {
+            asset_type: 'credit_alphanum4',
+            asset_code: 'USDC',
+            balance: '500',
+          },
+        ],
+      };
+
+      vi.spyOn(stellar.server, 'loadAccount').mockResolvedValue(mockAccount as any);
+
+      const balance = await stellar.getAccountBalance('GABC123');
+
+      expect(balance).toBe('0');
+    });
+
+    it('should return 0 on error', async () => {
+      vi.spyOn(stellar.server, 'loadAccount').mockRejectedValue(
+        new Error('Account not found')
+      );
+
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const balance = await stellar.getAccountBalance('INVALID');
+
+      expect(balance).toBe('0');
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'Error fetching account balance:',
+        expect.any(Error)
+      );
+
+      consoleSpy.mockRestore();
+    });
+
+    it('should handle network errors gracefully', async () => {
+      vi.spyOn(stellar.server, 'loadAccount').mockRejectedValue(
+        new Error('Network timeout')
+      );
+
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const balance = await stellar.getAccountBalance('GABC123');
+
+      expect(balance).toBe('0');
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('getTokenBalance', () => {
+    it('should return token balance for valid contract', async () => {
+      const mockSimulationResult = {
+        result: {
+          retval: StellarSdk.nativeToScVal(1000000000, { type: 'i128' }),
+        },
+      };
+
+      vi.spyOn(StellarSdk.rpc.Api, 'isSimulationSuccess').mockReturnValue(true);
+      vi.spyOn(stellar.sorobanServer, 'simulateTransaction').mockResolvedValue(
+        mockSimulationResult as any
+      );
+
+      const balance = await stellar.getTokenBalance(
+        'GABC123',
+        'CTOKEN123'
+      );
+
+      expect(balance).toBe('1000000000');
+    });
+
+    it('should return 0 if simulation fails', async () => {
+      vi.spyOn(StellarSdk.rpc.Api, 'isSimulationSuccess').mockReturnValue(false);
+      vi.spyOn(stellar.sorobanServer, 'simulateTransaction').mockResolvedValue({} as any);
+
+      const balance = await stellar.getTokenBalance(
+        'GABC123',
+        'CTOKEN123'
+      );
+
+      expect(balance).toBe('0');
+    });
+
+    it('should return 0 on error', async () => {
+      vi.spyOn(stellar.sorobanServer, 'simulateTransaction').mockRejectedValue(
+        new Error('RPC error')
+      );
+
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const balance = await stellar.getTokenBalance(
+        'GABC123',
+        'CTOKEN123'
+      );
+
+      expect(balance).toBe('0');
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'Error fetching token balance:',
+        expect.any(Error)
+      );
+
+      consoleSpy.mockRestore();
+    });
+
+    it('should use rate limiter for RPC calls', async () => {
+      const { rpcLimiter } = await import('../rate-limiter');
+
+      vi.spyOn(StellarSdk.rpc.Api, 'isSimulationSuccess').mockReturnValue(false);
+      vi.spyOn(stellar.sorobanServer, 'simulateTransaction').mockResolvedValue({} as any);
+
+      await stellar.getTokenBalance('GABC123', 'CTOKEN123');
+
+      expect(rpcLimiter.execute).toHaveBeenCalled();
+    });
+
+    it('should create contract with token address', async () => {
+      const contractSpy = vi.spyOn(StellarSdk, 'Contract');
+
+      vi.spyOn(StellarSdk.rpc.Api, 'isSimulationSuccess').mockReturnValue(false);
+      vi.spyOn(stellar.sorobanServer, 'simulateTransaction').mockResolvedValue({} as any);
+
+      await stellar.getTokenBalance('GABC123', 'CTOKEN_ADDRESS');
+
+      expect(contractSpy).toHaveBeenCalledWith('CTOKEN_ADDRESS');
+    });
+  });
+
+  describe('simulateTransaction', () => {
+    it('should return success for valid simulation', async () => {
+      const mockAccount = {
+        accountId: () => 'GABC123',
+        sequenceNumber: () => '123',
+        incrementSequenceNumber: () => {},
+      };
+
+      const mockSimResult = {
+        minResourceFee: '1000',
+        events: [],
+      };
+
+      vi.spyOn(stellar.server, 'loadAccount').mockResolvedValue(mockAccount as any);
+      vi.spyOn(StellarSdk.rpc.Api, 'isSimulationSuccess').mockReturnValue(true);
+      vi.spyOn(stellar.sorobanServer, 'simulateTransaction').mockResolvedValue(
+        mockSimResult as any
+      );
+
+      const result = await stellar.simulateTransaction('GABC123', []);
+
+      expect(result.success).toBe(true);
+      expect(result.minResourceFee).toBe('1000');
+    });
+
+    it('should return error for failed simulation', async () => {
+      const mockAccount = {
+        accountId: () => 'GABC123',
+        sequenceNumber: () => '123',
+        incrementSequenceNumber: () => {},
+      };
+
+      vi.spyOn(stellar.server, 'loadAccount').mockResolvedValue(mockAccount as any);
+      vi.spyOn(StellarSdk.rpc.Api, 'isSimulationSuccess').mockReturnValue(false);
+      vi.spyOn(StellarSdk.rpc.Api, 'isSimulationError').mockReturnValue(true);
+      vi.spyOn(stellar.sorobanServer, 'simulateTransaction').mockResolvedValue({
+        error: 'Simulation failed',
+      } as any);
+
+      const result = await stellar.simulateTransaction('GABC123', []);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+    });
+
+    it('should handle account load errors', async () => {
+      vi.spyOn(stellar.server, 'loadAccount').mockRejectedValue(
+        new Error('Account not found')
+      );
+
+      const result = await stellar.simulateTransaction('INVALID', []);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Account not found');
+    });
+
+    it('should use rate limiter for simulation', async () => {
+      const { rpcLimiter } = await import('../rate-limiter');
+
+      const mockAccount = {
+        accountId: () => 'GABC123',
+        sequenceNumber: () => '123',
+        incrementSequenceNumber: () => {},
+      };
+
+      vi.spyOn(stellar.server, 'loadAccount').mockResolvedValue(mockAccount as any);
+      vi.spyOn(StellarSdk.rpc.Api, 'isSimulationSuccess').mockReturnValue(true);
+      vi.spyOn(stellar.sorobanServer, 'simulateTransaction').mockResolvedValue({
+        minResourceFee: '1000',
+      } as any);
+
+      await stellar.simulateTransaction('GABC123', []);
+
+      expect(rpcLimiter.execute).toHaveBeenCalled();
+    });
+  });
+
+  describe('signTransactionWithWallet', () => {
+    it('should delegate to wallet-kit signTransaction', async () => {
+      const mockXdr = 'AAAAAgAAAABXr8...';
+      const mockSignedXdr = 'AAAAAgAAAABXr8...SIGNED';
+
+      // This is mocked globally in test setup
+      const { signTransaction } = await import('../wallet-kit');
+      vi.mocked(signTransaction).mockResolvedValue(mockSignedXdr);
+
+      const result = await stellar.signTransactionWithWallet(mockXdr);
+
+      expect(result).toBe(mockSignedXdr);
+      expect(signTransaction).toHaveBeenCalledWith(mockXdr);
+    });
+  });
+
+  describe('Helper Functions', () => {
+    it('should export all required constants', () => {
+      expect(stellar.NETWORK_PASSPHRASE).toBeDefined();
+      expect(stellar.HORIZON_URL).toBeDefined();
+      expect(stellar.SOROBAN_RPC_URL).toBeDefined();
+    });
+
+    it('should export server instances', () => {
+      expect(stellar.server).toBeDefined();
+      expect(stellar.sorobanServer).toBeDefined();
+    });
+
+    it('should export all helper functions', () => {
+      expect(typeof stellar.getAccountBalance).toBe('function');
+      expect(typeof stellar.getTokenBalance).toBe('function');
+      expect(typeof stellar.simulateTransaction).toBe('function');
+      expect(typeof stellar.signTransactionWithWallet).toBe('function');
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should log errors without throwing', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      vi.spyOn(stellar.server, 'loadAccount').mockRejectedValue(
+        new Error('Test error')
+      );
+
+      // Should not throw
+      await expect(stellar.getAccountBalance('GABC123')).resolves.toBe('0');
+
+      expect(consoleSpy).toHaveBeenCalled();
+      consoleSpy.mockRestore();
+    });
+
+    it('should handle malformed addresses gracefully', async () => {
+      vi.spyOn(stellar.server, 'loadAccount').mockRejectedValue(
+        new Error('Invalid address')
+      );
+
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const balance = await stellar.getAccountBalance('INVALID_FORMAT');
+
+      expect(balance).toBe('0');
+      consoleSpy.mockRestore();
+    });
+  });
+});

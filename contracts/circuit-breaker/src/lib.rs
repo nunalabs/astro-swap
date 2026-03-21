@@ -18,6 +18,9 @@
 
 mod storage;
 
+#[cfg(test)]
+mod security_tests;
+
 use astroswap_shared::AstroSwapError;
 use soroban_sdk::{
     contract, contractevent, contractimpl, contracttype, Address, Env, IntoVal, Symbol, Vec,

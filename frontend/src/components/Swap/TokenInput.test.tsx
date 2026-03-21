@@ -176,4 +176,39 @@ describe('TokenInput', () => {
       expect(screen.queryByText(/~\$/)).not.toBeInTheDocument();
     });
   });
+
+  describe('Input validation', () => {
+    it('removes leading zeros from input', () => {
+      const onAmountChange = vi.fn();
+      render(<TokenInput {...defaultProps} amount="" onAmountChange={onAmountChange} />);
+
+      const input = screen.getByRole('spinbutton');
+      fireEvent.change(input, { target: { value: '007' } });
+
+      // Should remove leading zeros and call onAmountChange with '7'
+      expect(onAmountChange).toHaveBeenCalledWith('7');
+    });
+
+    it('preserves "0." pattern when typing decimal', () => {
+      const onAmountChange = vi.fn();
+      render(<TokenInput {...defaultProps} amount="" onAmountChange={onAmountChange} />);
+
+      const input = screen.getByRole('spinbutton');
+      fireEvent.change(input, { target: { value: '0.' } });
+
+      // Should not remove the zero before decimal point
+      expect(onAmountChange).toHaveBeenCalledWith('0.');
+    });
+
+    it('handles edge case with multiple leading zeros', () => {
+      const onAmountChange = vi.fn();
+      render(<TokenInput {...defaultProps} amount="" onAmountChange={onAmountChange} />);
+
+      const input = screen.getByRole('spinbutton');
+      fireEvent.change(input, { target: { value: '00.5' } });
+
+      // Should remove ALL leading zeros, resulting in '.5'
+      expect(onAmountChange).toHaveBeenCalledWith('.5');
+    });
+  });
 });

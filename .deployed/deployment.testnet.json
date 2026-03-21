@@ -1,19 +1,46 @@
 {
   "network": "testnet",
-  "deployer": "GBHT4FYLBGMML3WMYVVEVXDSQYF5FDMS6LT4KTZC7B7AMAQXE57NHCQ7",
-  "timestamp": "2026-03-06T20:37:43Z",
+  "deployer": "GCXJ6ID2FQ66MKIQT7JVOSS67HFQ7EPRODJ7VV7WUDBZZOLUSLEYZQE4",
+  "timestamp": "2026-03-19T21:30:00Z",
   "contracts": {
-    "factory": "CBIGOVXEBBJRFYONNS5ZJUTGT4UIJJRYW2YCEFD6OJGLH4GRZW4PWG4T",
-    "router": "CA5AE63U6ZWRZWAPIIFTQSKDM45EQAYYWOIKN7MEQIJBYQAFAOPWLYYJ"
+    "factory": "CCIWIAARHLGLOXFZZJZVA42JWJRB3UCB25S6K6462SM27L5YNODDS2TW",
+    "router": "CDDAPQKLLP2WMH2LJELHM4E5NTZ7KEVEFV5GFE7EIPTUVD4K4YUUZQQV",
+    "bridge": "CC5XKGMINSIETOQU664ZJQXTZCJYA2KJFUV34UDEVRJNSMQOPKFEHWGM",
+    "staking": "CD7TGTMPW4TZAGC6AYEHCK4SMVHP6NC4X4UGTK242GEAXHPPOKWSILG4"
   },
   "wasmHashes": {
-    "pair": "1c15c49444fdd920da2649d2b3c264fc77de61ba3f82c31bfd9dbe5d4a0fb176"
+    "pair": "251b80d004a806aa1eeb63c80b1582d5942df2702d707beb85c12067e1a0a941",
+    "factory": "74b6516a5f985e6b74d208eca9461bd3f7107e2f488f6fcf6b9b8562cc12143c",
+    "router": "23ac269f4ab508392b79f6d47755c1a9a6008b88cbab78a33addd9f9ba864936",
+    "bridge": "51c2f7e70544b528ac5199181837b910749ef27feb4d2b33276de2b3daa1e115",
+    "staking": "d6eb3be8f0bd7dd0452dcf2a8a0b199300ea737db3a042e6ef929517396de41d"
   },
-  "sac": {
-    "XLM": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
-    "yUSDC": "CABWYQLGOQ5Y3RIYUVYJZVA355YVX4SPAMN6ORDAVJZQBPPHLHRRLNMS"
+  "configuration": {
+    "protocol_fee_bps": 30,
+    "admin": "GCXJ6ID2FQ66MKIQT7JVOSS67HFQ7EPRODJ7VV7WUDBZZOLUSLEYZQE4",
+    "launchpad": "CCQ4IMTQR3PIXQBLEZPFFUEPGMSHUE5AAD2CB6PXBOVR5G3EQKGTHUPD",
+    "quote_token": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+    "reward_token": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
   },
-  "pairs": {
-    "XLM-yUSDC": "CDEUG7PREQ37OTXNRJU6JEUD4XCCDDJKRNY5VDFY57GNBKHLTXKGTP5S"
-  }
+  "transactions": {
+    "pair_wasm_upload": "https://stellar.expert/explorer/testnet/tx/3e556ed5a39e7401da61d1831093c81258fe012635cbe374a6b8141a4e9a422b",
+    "factory_deploy": "https://stellar.expert/explorer/testnet/tx/bed473253d0f33dba767de1f0bbac9f5a7a59fe83fdb87eed852d77c4c6b68f9",
+    "router_deploy": "https://stellar.expert/explorer/testnet/tx/e8cf1f49fb425b5a5cd22aea6aaecd110d0d55d426c6015a1c2d04e4708bf3ab",
+    "bridge_deploy": "https://stellar.expert/explorer/testnet/tx/50da2b4cb187c4861a393321ea22d903a326822929c3d36d0add9be57512b87b",
+    "staking_deploy": "https://stellar.expert/explorer/testnet/tx/b3faadb7af4880516b123fb0de3a0b1e2a176f68228759ee62e0402c0fa0985b"
+  },
+  "integration": {
+    "bridge_configured_in_launchpad": true,
+    "bridge_config_tx": "https://stellar.expert/explorer/testnet/tx/b10567c84d06526ee81d6620de65a5438b0e25e2672a4973f30fdcddc4a0a18b"
+  },
+  "notes": [
+    "All contracts built with stellar contract build using wasm32v1-none target",
+    "Factory deployed with CAP-58 constructor pattern",
+    "Router connected to factory for pair lookups",
+    "Bridge fully integrated with launchpad for token graduation",
+    "Staking uses XLM as reward token for testnet",
+    "Ready for end-to-end testing: token launch → graduation → AMM trading"
+  ],
+  "sdk_version": "soroban-sdk 25.2.0",
+  "stellar_cli_version": "stellar 25.2.0"
 }

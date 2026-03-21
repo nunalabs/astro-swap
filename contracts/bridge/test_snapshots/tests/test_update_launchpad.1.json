@@ -92,6 +92,18 @@
                       "key": {
                         "vec": [
                           {
+                            "symbol": "DeadAddress"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "address": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
                             "symbol": "Factory"
                           }
                         ]

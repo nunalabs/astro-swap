@@ -21,7 +21,15 @@ export const ConnectWallet = memo(function ConnectWallet() {
 
   const handleConnect = async () => {
     try {
+      // Show a toast that tells user to approve in wallet extension
+      addToast({
+        type: 'info',
+        title: 'Wallet Connection',
+        description: 'Please approve the connection in your wallet extension and return to this page',
+      });
+
       await connect();
+
       addToast({
         type: 'success',
         title: 'Wallet Connected',
@@ -69,6 +77,7 @@ export const ConnectWallet = memo(function ConnectWallet() {
         isLoading={isConnecting}
         size={isMobile ? 'sm' : 'md'}
         className="min-w-[140px]"
+        title={isConnecting ? 'Approve in your wallet extension and return to this page' : 'Connect your Stellar wallet'}
       >
         <svg
           className="w-5 h-5"
@@ -84,7 +93,7 @@ export const ConnectWallet = memo(function ConnectWallet() {
           />
         </svg>
         <span className={isMobile ? 'hidden sm:inline' : ''}>
-          {isConnecting ? 'Connecting...' : 'Connect'}
+          {isConnecting ? 'Waiting...' : 'Connect'}
         </span>
       </Button>
     );

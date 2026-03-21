@@ -192,6 +192,7 @@ impl AstroSwapPair {
     ///
     /// # Security
     /// Uses reentrancy guard to prevent flash loan attacks
+    /// Includes deadline for MEV protection
     pub fn deposit(
         env: Env,
         user: Address,
@@ -199,11 +200,17 @@ impl AstroSwapPair {
         amount_1_desired: i128,
         amount_0_min: i128,
         amount_1_min: i128,
+        deadline: u64,
     ) -> Result<(i128, i128, i128), AstroSwapError> {
         // Verify contract is initialized
         Self::require_initialized(&env)?;
         // Check pause status
         Self::require_not_paused(&env)?;
+
+        // Check deadline (MEV protection)
+        if env.ledger().timestamp() > deadline {
+            return Err(AstroSwapError::DeadlineExpired);
+        }
 
         // Reentrancy guard
         Self::acquire_lock(&env)?;
@@ -220,13 +227,16 @@ impl AstroSwapPair {
 
         // Calculate optimal amounts
         let (amount_0, amount_1) = if total_supply == 0 {
-            // First deposit - use desired amounts
+            // First deposit - use desired amounts exactly
+            // For first liquidity, user sets the initial price ratio
+            // No slippage protection needed since there's no existing ratio
             (amount_0_desired, amount_1_desired)
         } else {
             // Calculate optimal based on current ratio
             let amount_1_optimal = astroswap_shared::quote(amount_0_desired, reserve_0, reserve_1)?;
 
             if amount_1_optimal <= amount_1_desired {
+                // Verify minimum amount requirement (slippage protection)
                 if amount_1_optimal < amount_1_min {
                     Self::release_lock(&env);
                     return Err(AstroSwapError::MinimumNotMet);
@@ -235,6 +245,7 @@ impl AstroSwapPair {
             } else {
                 let amount_0_optimal =
                     astroswap_shared::quote(amount_1_desired, reserve_1, reserve_0)?;
+                // Verify minimum amount requirements (slippage protection)
                 if amount_0_optimal > amount_0_desired || amount_0_optimal < amount_0_min {
                     Self::release_lock(&env);
                     return Err(AstroSwapError::MinimumNotMet);
@@ -308,23 +319,31 @@ impl AstroSwapPair {
     /// * `shares` - Amount of LP tokens to burn
     /// * `amount_0_min` - Minimum amount of token_0 to receive
     /// * `amount_1_min` - Minimum amount of token_1 to receive
+    /// * `deadline` - Timestamp after which the transaction reverts (MEV protection)
     ///
     /// # Returns
     /// * Tuple of (amount_0_received, amount_1_received)
     ///
     /// # Security
     /// Uses reentrancy guard to prevent flash loan attacks
+    /// Includes deadline for MEV protection
     pub fn withdraw(
         env: Env,
         user: Address,
         shares: i128,
         amount_0_min: i128,
         amount_1_min: i128,
+        deadline: u64,
     ) -> Result<(i128, i128), AstroSwapError> {
         // Verify contract is initialized
         Self::require_initialized(&env)?;
         // Check pause status
         Self::require_not_paused(&env)?;
+
+        // Check deadline (MEV protection)
+        if env.ledger().timestamp() > deadline {
+            return Err(AstroSwapError::DeadlineExpired);
+        }
 
         // Reentrancy guard
         Self::acquire_lock(&env)?;
@@ -496,7 +515,7 @@ impl AstroSwapPair {
             (reserve_out, reserve_in)
         };
         if !verify_k_invariant(new_reserve_0, new_reserve_1, orig_reserve_0, orig_reserve_1)? {
-            return Err(AstroSwapError::InvalidAmount);
+            return Err(AstroSwapError::KInvariantViolation);
         }
 
         // Emit event
@@ -510,6 +529,22 @@ impl AstroSwapPair {
 
     /// Low-level swap for router (tokens already in contract)
     /// Used by router for multi-hop swaps where tokens are pre-transferred
+    ///
+    /// # ⚠️ WARNING - Internal Router Function
+    /// This function is designed ONLY for use by trusted Router contracts.
+    /// It does NOT require user authentication because it assumes tokens are
+    /// already in the pair contract (pre-transferred by the Router).
+    ///
+    /// # Security Risks if Called Directly
+    /// If someone accidentally sends tokens to this pair contract, ANY user
+    /// could call this function to execute a swap with those tokens before
+    /// the owner recovers them. Do NOT call this function directly unless
+    /// you are a Router contract.
+    ///
+    /// # Recommended Usage
+    /// - Router contracts should pre-transfer tokens to the pair
+    /// - Then call this function to execute the swap
+    /// - Regular users should use swap() instead, which requires user auth
     ///
     /// # Arguments
     /// * `to` - Recipient of output tokens (next pair or final user)
@@ -628,7 +663,7 @@ impl AstroSwapPair {
         // Verify k invariant (with overflow protection)
         if !verify_k_invariant(new_balance_0, new_balance_1, reserve_0, reserve_1)? {
             Self::release_lock(&env);
-            return Err(AstroSwapError::InvalidAmount);
+            return Err(AstroSwapError::KInvariantViolation);
         }
 
         // Emit event

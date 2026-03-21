@@ -245,13 +245,14 @@ impl AstroSwapRouter {
             )
         };
 
-        // Deposit into pair
+        // Deposit into pair with deadline protection
         let result = pair_client.deposit(
             &user,
             amount_0_desired,
             amount_1_desired,
             amount_0_min,
             amount_1_min,
+            deadline,
         );
 
         extend_instance_ttl(&env);
@@ -303,8 +304,8 @@ impl AstroSwapRouter {
             (amount_b_min, amount_a_min)
         };
 
-        // Call withdraw
-        let result = pair_client.withdraw(&user, liquidity, min_0, min_1);
+        // Call withdraw with deadline protection
+        let result = pair_client.withdraw(&user, liquidity, min_0, min_1, deadline);
 
         extend_instance_ttl(&env);
 
@@ -329,6 +330,11 @@ impl AstroSwapRouter {
         }
 
         let factory = get_factory(env)?;
+
+        // Pre-validate: ALL pairs must exist before calculating
+        // This prevents wasted computation if any pair is missing
+        Self::validate_all_pairs_exist(env, &factory, path)?;
+
         let factory_client = FactoryClient::new(env, &factory);
 
         let mut amounts = Vec::new(env);
@@ -375,6 +381,11 @@ impl AstroSwapRouter {
         }
 
         let factory = get_factory(env)?;
+
+        // Pre-validate: ALL pairs must exist before calculating
+        // This prevents wasted computation if any pair is missing
+        Self::validate_all_pairs_exist(env, &factory, path)?;
+
         let factory_client = FactoryClient::new(env, &factory);
 
         let path_len = path.len();
@@ -497,8 +508,46 @@ impl AstroSwapRouter {
         Ok(())
     }
 
+    /// Pre-validate that all pairs in the path exist
+    ///
+    /// # Optimization
+    /// This function checks ALL pairs BEFORE calculating amounts.
+    /// This prevents wasted computation if any pair is missing.
+    ///
+    /// # Arguments
+    /// * `env` - Execution environment
+    /// * `factory` - Factory address
+    /// * `path` - Token path to validate
+    ///
+    /// # Errors
+    /// Returns PairNotFound if any pair doesn't exist
+    fn validate_all_pairs_exist(
+        env: &Env,
+        factory: &Address,
+        path: &Vec<Address>,
+    ) -> Result<(), AstroSwapError> {
+        let factory_client = FactoryClient::new(env, factory);
+
+        // Verify all pairs exist before doing any calculations
+        for i in 0..(path.len() - 1) {
+            let token_in = path.get(i).ok_or(AstroSwapError::InvalidPath)?;
+            let token_out = path.get(i + 1).ok_or(AstroSwapError::InvalidPath)?;
+
+            // Fail fast if any pair doesn't exist
+            let _pair_address = factory_client
+                .get_pair(&token_in, &token_out)
+                .ok_or(AstroSwapError::PairNotFound)?;
+        }
+
+        Ok(())
+    }
+
     /// Execute swaps along the path using low-level swap_from_balance
     /// Tokens must be pre-transferred to the first pair
+    ///
+    /// # Optimization
+    /// Pre-computes all pair addresses upfront to reduce cross-contract calls.
+    /// For a 3-hop swap, this reduces factory calls from 5 to 3 (40% reduction).
     fn execute_swaps(
         env: &Env,
         factory: &Address,
@@ -509,36 +558,42 @@ impl AstroSwapRouter {
     ) -> Result<(), AstroSwapError> {
         let factory_client = FactoryClient::new(env, factory);
 
+        // Pre-compute all pair addresses (1 factory call per pair)
+        // This eliminates redundant get_pair() calls in the loop
+        let mut pair_addresses = Vec::new(env);
         for i in 0..(path.len() - 1) {
-            // Safe indexing with proper error handling
             let token_in = path.get(i).ok_or(AstroSwapError::InvalidPath)?;
             let token_out = path.get(i + 1).ok_or(AstroSwapError::InvalidPath)?;
-            let min_out = amounts.get(i + 1).ok_or(AstroSwapError::InvalidPath)?;
-
-            // Get pair
-            let pair_address = factory_client
+            let pair = factory_client
                 .get_pair(&token_in, &token_out)
                 .ok_or(AstroSwapError::PairNotFound)?;
+            pair_addresses.push_back(pair);
+        }
 
+        // Execute swaps with pre-computed addresses
+        for i in 0..(path.len() - 1) {
+            let token_in = path.get(i).ok_or(AstroSwapError::InvalidPath)?;
+            let min_out = amounts.get(i + 1).ok_or(AstroSwapError::InvalidPath)?;
+
+            // Get pre-computed pair address
+            let pair_address = pair_addresses.get(i).ok_or(AstroSwapError::InvalidPath)?;
             let pair_client = PairClient::new(env, &pair_address);
 
             // Determine if this is the last swap
             let is_last = i == path.len() - 2;
 
-            // Determine recipient: next pair or final user
+            // Determine recipient: next pair (pre-computed) or final user
             let swap_recipient = if is_last {
-                recipient.clone()
+                recipient  // No clone needed - use reference
             } else {
-                // Get next pair address - output goes directly to next pair
-                let next_token_in = path.get(i + 1).ok_or(AstroSwapError::InvalidPath)?;
-                let next_token_out = path.get(i + 2).ok_or(AstroSwapError::InvalidPath)?;
-                factory_client
-                    .get_pair(&next_token_in, &next_token_out)
-                    .ok_or(AstroSwapError::PairNotFound)?
+                // Get next pair address from pre-computed list
+                &pair_addresses
+                    .get(i + 1)
+                    .ok_or(AstroSwapError::InvalidPath)?
             };
 
             // Execute low-level swap (tokens already in pair from previous transfer/swap)
-            pair_client.swap_from_balance(&swap_recipient, &token_in, min_out, deadline)?;
+            pair_client.swap_from_balance(swap_recipient, &token_in, min_out, deadline)?;
         }
 
         Ok(())

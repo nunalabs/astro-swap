@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Clear Storage - AstroSwap</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 600px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #1a1a1a;
+      color: #fff;
+    }
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 10px 0;
+      width: 100%;
+    }
+    button:hover {
+      background: #2563eb;
+    }
+    .success {
+      background: #10b981;
+      padding: 12px;
+      border-radius: 8px;
+      margin: 10px 0;
+      display: none;
+    }
+    .info {
+      background: #1e293b;
+      padding: 16px;
+      border-radius: 8px;
+      margin: 20px 0;
+      border-left: 4px solid #3b82f6;
+    }
+    code {
+      background: #2d3748;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'Monaco', 'Courier New', monospace;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧹 Clear AstroSwap Storage</h1>
+
+  <div class="info">
+    <strong>When to use this:</strong>
+    <ul>
+      <li>Reentrancy errors won't go away</li>
+      <li>Approval states are stuck</li>
+      <li>Token list shows invalid tokens</li>
+    </ul>
+  </div>
+
+  <button onclick="clearAll()">Clear All Storage</button>
+  <button onclick="clearTokensOnly()">Clear Tokens Only</button>
+  <button onclick="showStorage()">Show Current Storage</button>
+
+  <div id="success" class="success"></div>
+  <div id="output"></div>
+
+  <div class="info" style="margin-top: 30px;">
+    <strong>What gets cleared:</strong>
+    <ul>
+      <li><code>astroswap-tokens</code> - Token list & favorites</li>
+      <li><code>wallet-state</code> - Wallet connection (you'll need to reconnect)</li>
+      <li><code>settings</code> - UI preferences</li>
+      <li>All React Query cache</li>
+    </ul>
+  </div>
+
+  <script>
+    function clearAll() {
+      // Clear localStorage
+      const keys = Object.keys(localStorage);
+      keys.forEach(key => {
+        if (key.includes('astroswap') || key.includes('wallet') || key.includes('settings')) {
+          localStorage.removeItem(key);
+        }
+      });
+
+      // Clear sessionStorage
+      sessionStorage.clear();
+
+      // Clear IndexedDB if it exists
+      if (window.indexedDB) {
+        indexedDB.databases().then(databases => {
+          databases.forEach(db => {
+            if (db.name && (db.name.includes('astroswap') || db.name.includes('react-query'))) {
+              indexedDB.deleteDatabase(db.name);
+            }
+          });
+        });
+      }
+
+      showSuccess('✅ All storage cleared! Please close this tab and reload the main app.');
+    }
+
+    function clearTokensOnly() {
+      localStorage.removeItem('astroswap-tokens');
+      showSuccess('✅ Token storage cleared! Please reload the main app.');
+    }
+
+    function showStorage() {
+      const output = document.getElementById('output');
+      const keys = Object.keys(localStorage);
+      const astroKeys = keys.filter(k =>
+        k.includes('astroswap') || k.includes('wallet') || k.includes('settings')
+      );
+
+      if (astroKeys.length === 0) {
+        output.innerHTML = '<div class="info">No AstroSwap storage found.</div>';
+        return;
+      }
+
+      let html = '<div class="info"><strong>Current Storage:</strong><ul>';
+      astroKeys.forEach(key => {
+        const value = localStorage.getItem(key);
+        const size = new Blob([value || '']).size;
+        html += `<li><code>${key}</code> (${(size / 1024).toFixed(2)} KB)</li>`;
+      });
+      html += '</ul></div>';
+      output.innerHTML = html;
+    }
+
+    function showSuccess(message) {
+      const el = document.getElementById('success');
+      el.textContent = message;
+      el.style.display = 'block';
+      setTimeout(() => {
+        el.style.display = 'none';
+      }, 5000);
+    }
+  </script>
+</body>
+</html>

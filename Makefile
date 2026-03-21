@@ -126,6 +126,31 @@ deploy-testnet:
 deploy-mainnet:
 	@$(MAKE) deploy NETWORK=mainnet
 
+# Configure contracts (apply network-specific settings)
+config:
+	@echo "Configuring contracts for $(NETWORK)..."
+	@./scripts/configure.sh $(NETWORK)
+
+# Configure testnet (permissive: public pair creation enabled)
+config-testnet:
+	@$(MAKE) config NETWORK=testnet
+
+# Configure mainnet (restrictive: admin-only pair creation)
+config-mainnet:
+	@$(MAKE) config NETWORK=mainnet
+
+# Full deployment + configuration
+deploy-and-config: deploy config
+	@echo "Deployment and configuration complete!"
+
+# Full deployment + configuration for testnet
+deploy-and-config-testnet:
+	@$(MAKE) deploy-and-config NETWORK=testnet
+
+# Full deployment + configuration for mainnet
+deploy-and-config-mainnet:
+	@$(MAKE) deploy-and-config NETWORK=mainnet
+
 # Generate contract bindings
 bindings:
 	@echo "Generating contract bindings..."
@@ -226,12 +251,22 @@ help:
 	@echo "  lint         - Run clippy linter"
 	@echo "  optimize     - Optimize WASM binaries"
 	@echo "  deploy       - Deploy contracts (NETWORK=testnet|mainnet)"
+	@echo "  config       - Configure deployed contracts (NETWORK=testnet|mainnet)"
+	@echo "  deploy-and-config - Deploy + configure in one command"
 	@echo "  bindings     - Generate TypeScript bindings"
 	@echo "  install      - Install dependencies"
 	@echo "  setup        - Setup development environment"
 	@echo "  docs         - Generate documentation"
 	@echo "  coverage     - Run code coverage"
 	@echo "  verify-size  - Check contract sizes"
+	@echo ""
+	@echo "Network Management:"
+	@echo "  deploy-testnet       - Deploy all contracts to testnet"
+	@echo "  deploy-mainnet       - Deploy all contracts to mainnet"
+	@echo "  config-testnet       - Configure testnet (public pools enabled)"
+	@echo "  config-mainnet       - Configure mainnet (admin-only pools)"
+	@echo "  deploy-and-config-testnet  - Deploy + configure testnet (one command)"
+	@echo "  deploy-and-config-mainnet  - Deploy + configure mainnet (one command)"
 	@echo ""
 	@echo "SDK Targets:"
 	@echo "  sdk-install  - Install SDK dependencies"

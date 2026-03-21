@@ -135,7 +135,7 @@ fn test_first_deposit_success() {
     let amount_0 = 100_0000000i128; // 100 tokens
     let amount_1 = 100_0000000i128;
 
-    let result = pair_client.deposit(&user, &amount_0, &amount_1, &0, &0);
+    let result = pair_client.deposit(&user, &amount_0, &amount_1, &0, &0, &FAR_FUTURE_DEADLINE);
 
     // First deposit uses all amounts
     assert_eq!(result.0, amount_0);
@@ -160,10 +160,10 @@ fn test_subsequent_deposit_maintains_ratio() {
     let (pair_client, _, _, _, _, user) = setup_pair_with_liquidity(&env);
 
     // First deposit
-    pair_client.deposit(&user, &100_0000000, &200_0000000, &0, &0);
+    pair_client.deposit(&user, &100_0000000, &200_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     // Second deposit - should maintain 1:2 ratio
-    let result = pair_client.deposit(&user, &50_0000000, &200_0000000, &0, &0);
+    let result = pair_client.deposit(&user, &50_0000000, &200_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     // Should get optimal amounts based on ratio
     // With 1:2 ratio, 50 token_0 should pair with 100 token_1
@@ -178,7 +178,7 @@ fn test_deposit_with_zero_amount_fails() {
 
     let (pair_client, _, _, _, _, user) = setup_pair_with_liquidity(&env);
 
-    let result = pair_client.try_deposit(&user, &0, &100_0000000, &0, &0);
+    let result = pair_client.try_deposit(&user, &0, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
     assert!(result.is_err());
 }
 
@@ -189,7 +189,7 @@ fn test_deposit_with_negative_amount_fails() {
 
     let (pair_client, _, _, _, _, user) = setup_pair_with_liquidity(&env);
 
-    let result = pair_client.try_deposit(&user, &-100, &100_0000000, &0, &0);
+    let result = pair_client.try_deposit(&user, &-100, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
     assert!(result.is_err());
 }
 
@@ -201,7 +201,7 @@ fn test_deposit_below_minimum_fails() {
     let (pair_client, _, _, _, _, user) = setup_pair_with_liquidity(&env);
 
     // First deposit
-    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     // Second deposit with minimum too high
     let result = pair_client.try_deposit(
@@ -210,6 +210,7 @@ fn test_deposit_below_minimum_fails() {
         &50_0000000,
         &50_0000000, // min_0 = desired_0, OK
         &100_0000000, // min_1 much higher than optimal
+        &FAR_FUTURE_DEADLINE,
     );
     assert!(result.is_err());
 }
@@ -225,13 +226,13 @@ fn test_withdraw_success() {
         setup_pair_with_liquidity(&env);
 
     // First deposit
-    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     let user_lp = pair_client.balance(&user);
     let half_lp = user_lp / 2;
 
     // Withdraw half
-    let result = pair_client.withdraw(&user, &half_lp, &0, &0);
+    let result = pair_client.withdraw(&user, &half_lp, &0, &0, &FAR_FUTURE_DEADLINE);
 
     assert!(result.0 > 0);
     assert!(result.1 > 0);
@@ -248,12 +249,12 @@ fn test_withdraw_all() {
     let (pair_client, _, _, _, _, user) = setup_pair_with_liquidity(&env);
 
     // Deposit
-    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     let user_lp = pair_client.balance(&user);
 
     // Withdraw all
-    pair_client.withdraw(&user, &user_lp, &0, &0);
+    pair_client.withdraw(&user, &user_lp, &0, &0, &FAR_FUTURE_DEADLINE);
 
     // User should have 0 LP tokens
     assert_eq!(pair_client.balance(&user), 0);
@@ -266,9 +267,9 @@ fn test_withdraw_zero_fails() {
 
     let (pair_client, _, _, _, _, user) = setup_pair_with_liquidity(&env);
 
-    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
-    let result = pair_client.try_withdraw(&user, &0, &0, &0);
+    let result = pair_client.try_withdraw(&user, &0, &0, &0, &FAR_FUTURE_DEADLINE);
     assert!(result.is_err());
 }
 
@@ -279,11 +280,11 @@ fn test_withdraw_more_than_balance_fails() {
 
     let (pair_client, _, _, _, _, user) = setup_pair_with_liquidity(&env);
 
-    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     let user_lp = pair_client.balance(&user);
 
-    let result = pair_client.try_withdraw(&user, &(user_lp + 1), &0, &0);
+    let result = pair_client.try_withdraw(&user, &(user_lp + 1), &0, &0, &FAR_FUTURE_DEADLINE);
     assert!(result.is_err());
 }
 
@@ -294,12 +295,12 @@ fn test_withdraw_below_minimum_fails() {
 
     let (pair_client, _, _, _, _, user) = setup_pair_with_liquidity(&env);
 
-    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     let user_lp = pair_client.balance(&user);
 
     // Set minimum higher than what we'd receive
-    let result = pair_client.try_withdraw(&user, &user_lp, &200_0000000, &0);
+    let result = pair_client.try_withdraw(&user, &user_lp, &200_0000000, &0, &FAR_FUTURE_DEADLINE);
     assert!(result.is_err());
 }
 
@@ -313,7 +314,7 @@ fn test_swap_success() {
     let (pair_client, _, _, token_0_addr, _, user) = setup_pair_with_liquidity(&env);
 
     // Add liquidity first
-    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     // Swap
     let amount_in = 10_0000000i128;
@@ -331,7 +332,7 @@ fn test_swap_respects_slippage() {
 
     let (pair_client, _, _, token_0_addr, _, user) = setup_pair_with_liquidity(&env);
 
-    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     // Try swap with very high minimum - should fail
     let result = pair_client.try_swap(&user, &token_0_addr, &10_0000000, &50_0000000, &FAR_FUTURE_DEADLINE);
@@ -345,7 +346,7 @@ fn test_swap_zero_amount_fails() {
 
     let (pair_client, _, _, token_0_addr, _, user) = setup_pair_with_liquidity(&env);
 
-    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     let result = pair_client.try_swap(&user, &token_0_addr, &0, &0, &FAR_FUTURE_DEADLINE);
     assert!(result.is_err());
@@ -358,7 +359,7 @@ fn test_swap_invalid_token_fails() {
 
     let (pair_client, _, _, _, _, user) = setup_pair_with_liquidity(&env);
 
-    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     let invalid_token = Address::generate(&env);
     let result = pair_client.try_swap(&user, &invalid_token, &10_0000000, &0, &FAR_FUTURE_DEADLINE);
@@ -372,7 +373,7 @@ fn test_swap_maintains_k_invariant() {
 
     let (pair_client, _, _, token_0_addr, _, user) = setup_pair_with_liquidity(&env);
 
-    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     let k_before = pair_client.k_last();
 
@@ -398,7 +399,7 @@ fn test_pause_blocks_deposit() {
     assert!(pair_client.is_paused());
 
     // Deposit should fail
-    let result = pair_client.try_deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    let result = pair_client.try_deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
     assert!(result.is_err());
 }
 
@@ -410,7 +411,7 @@ fn test_pause_blocks_swap() {
     let (pair_client, _, _, token_0_addr, _, user) = setup_pair_with_liquidity(&env);
 
     // Deposit before pausing
-    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     // Pause
     pair_client.set_paused(&true);
@@ -428,7 +429,7 @@ fn test_unpause_restores_functionality() {
     let (pair_client, _, _, token_0_addr, _, user) = setup_pair_with_liquidity(&env);
 
     // Deposit
-    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     // Pause then unpause
     pair_client.set_paused(&true);
@@ -449,7 +450,7 @@ fn test_lp_token_transfer() {
 
     let (pair_client, _, _, _, _, user) = setup_pair_with_liquidity(&env);
 
-    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     let user_lp = pair_client.balance(&user);
     let recipient = Address::generate(&env);
@@ -467,7 +468,7 @@ fn test_lp_token_approve_and_transfer_from() {
 
     let (pair_client, _, _, _, _, user) = setup_pair_with_liquidity(&env);
 
-    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     let user_lp = pair_client.balance(&user);
     let spender = Address::generate(&env);
@@ -491,7 +492,7 @@ fn test_get_amount_out() {
 
     let (pair_client, _, _, token_0_addr, _, user) = setup_pair_with_liquidity(&env);
 
-    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     // Use try_get_amount_out which returns Result
     let amount_out = pair_client.try_get_amount_out(&10_0000000, &token_0_addr);
@@ -508,7 +509,7 @@ fn test_get_amount_in() {
 
     let (pair_client, _, _, _, token_1_addr, user) = setup_pair_with_liquidity(&env);
 
-    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     // Use try_get_amount_in which returns Result
     let amount_in = pair_client.try_get_amount_in(&10_0000000, &token_1_addr);
@@ -525,7 +526,7 @@ fn test_get_info() {
 
     let (pair_client, _, _, token_0_addr, token_1_addr, user) = setup_pair_with_liquidity(&env);
 
-    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     let info = pair_client.get_info();
 
@@ -546,7 +547,7 @@ fn test_sync_updates_reserves() {
 
     let (pair_client, _, _, _, _, user) = setup_pair_with_liquidity(&env);
 
-    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     // Sync should not change anything if balances match reserves
     pair_client.sync();
@@ -566,7 +567,7 @@ fn test_large_swap_high_price_impact() {
     let (pair_client, _, _, token_0_addr, _, user) = setup_pair_with_liquidity(&env);
 
     // Small pool
-    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     // Large swap (50% of pool)
     let amount_in = 50_0000000i128;
@@ -585,7 +586,7 @@ fn test_multiple_swaps_in_same_direction() {
 
     let (pair_client, _, _, token_0_addr, _, user) = setup_pair_with_liquidity(&env);
 
-    pair_client.deposit(&user, &10_000_000_000, &10_000_000_000, &0, &0);
+    pair_client.deposit(&user, &10_000_000_000, &10_000_000_000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     // Multiple small swaps
     let mut total_out = 0i128;
@@ -611,7 +612,7 @@ fn test_minimum_liquidity_locked() {
     let (pair_client, _, _, _, _, user) = setup_pair_with_liquidity(&env);
 
     // First deposit
-    let _result = pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0);
+    let _result = pair_client.deposit(&user, &100_0000000, &100_0000000, &0, &0, &FAR_FUTURE_DEADLINE);
 
     // Total supply should be more than user's balance (MINIMUM_LIQUIDITY locked)
     let total_supply = pair_client.total_supply();

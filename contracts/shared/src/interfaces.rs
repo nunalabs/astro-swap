@@ -174,6 +174,7 @@ impl<'a> PairClient<'a> {
         amount_1_desired: i128,
         amount_0_min: i128,
         amount_1_min: i128,
+        deadline: u64,
     ) -> (i128, i128, i128) {
         self.env.invoke_contract(
             &self.contract_id,
@@ -186,6 +187,7 @@ impl<'a> PairClient<'a> {
                     amount_1_desired.into_val(self.env),
                     amount_0_min.into_val(self.env),
                     amount_1_min.into_val(self.env),
+                    deadline.into_val(self.env),
                 ],
             ),
         )
@@ -198,6 +200,7 @@ impl<'a> PairClient<'a> {
         shares: i128,
         amount_0_min: i128,
         amount_1_min: i128,
+        deadline: u64,
     ) -> (i128, i128) {
         self.env.invoke_contract(
             &self.contract_id,
@@ -209,6 +212,7 @@ impl<'a> PairClient<'a> {
                     shares.into_val(self.env),
                     amount_0_min.into_val(self.env),
                     amount_1_min.into_val(self.env),
+                    deadline.into_val(self.env),
                 ],
             ),
         )

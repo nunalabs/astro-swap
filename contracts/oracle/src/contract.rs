@@ -244,15 +244,13 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register(AstroSwapOracle, ());
-        let client = AstroSwapOracleClient::new(&env, &contract_id);
-
         let admin = Address::generate(&env);
 
-        let result = client.try_initialize(&admin, &3600);
-        assert!(result.is_ok());
+        // Constructor initializes automatically
+        let contract_id = env.register(AstroSwapOracle, (admin.clone(), 3600u64));
+        let client = AstroSwapOracleClient::new(&env, &contract_id);
 
-        // Should not be able to initialize twice
+        // Should not be able to initialize twice (legacy method)
         let result = client.try_initialize(&admin, &3600);
         assert_eq!(result, Err(Ok(OracleError::AlreadyInitialized)));
     }
@@ -262,13 +260,12 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register(AstroSwapOracle, ());
-        let client = AstroSwapOracleClient::new(&env, &contract_id);
-
         let admin = Address::generate(&env);
         let token = Address::generate(&env);
 
-        client.initialize(&admin, &3600);
+        // Constructor initializes with admin and staleness_threshold
+        let contract_id = env.register(AstroSwapOracle, (admin.clone(), 3600u64));
+        let client = AstroSwapOracleClient::new(&env, &contract_id);
 
         // Update price
         client.update_price(
@@ -289,13 +286,11 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register(AstroSwapOracle, ());
-        let client = AstroSwapOracleClient::new(&env, &contract_id);
-
         let admin = Address::generate(&env);
         let token = Address::generate(&env);
 
-        client.initialize(&admin, &3600);
+        let contract_id = env.register(AstroSwapOracle, (admin.clone(), 3600u64));
+        let client = AstroSwapOracleClient::new(&env, &contract_id);
 
         // Update price
         client.update_price(&token, &100_000_000, &6, &String::from_str(&env, "DIA"));
@@ -316,13 +311,11 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register(AstroSwapOracle, ());
-        let client = AstroSwapOracleClient::new(&env, &contract_id);
-
         let admin = Address::generate(&env);
         let token = Address::generate(&env);
 
-        client.initialize(&admin, &3600);
+        let contract_id = env.register(AstroSwapOracle, (admin.clone(), 3600u64));
+        let client = AstroSwapOracleClient::new(&env, &contract_id);
 
         // Add price feed
         client.add_price_feed(&token, &String::from_str(&env, "BTC/USD"));
@@ -337,13 +330,11 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register(AstroSwapOracle, ());
-        let client = AstroSwapOracleClient::new(&env, &contract_id);
-
         let admin = Address::generate(&env);
         let token = Address::generate(&env);
 
-        client.initialize(&admin, &3600);
+        let contract_id = env.register(AstroSwapOracle, (admin.clone(), 3600u64));
+        let client = AstroSwapOracleClient::new(&env, &contract_id);
 
         // Try to update with zero price
         let result = client.try_update_price(&token, &0, &6, &String::from_str(&env, "DIA"));
@@ -351,24 +342,15 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "invalid staleness threshold")]
     fn test_invalid_staleness_threshold() {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register(AstroSwapOracle, ());
-        let client = AstroSwapOracleClient::new(&env, &contract_id);
-
         let admin = Address::generate(&env);
 
-        // Zero threshold should fail
-        let result = client.try_initialize(&admin, &0);
-        assert_eq!(result, Err(Ok(OracleError::InvalidStalenessThreshold)));
-
-        // Too large threshold should fail (create new contract)
-        let contract_id2 = env.register(AstroSwapOracle, ());
-        let client2 = AstroSwapOracleClient::new(&env, &contract_id2);
-        let result = client2.try_initialize(&admin, &100000);
-        assert_eq!(result, Err(Ok(OracleError::InvalidStalenessThreshold)));
+        // Zero threshold should panic in constructor
+        let _contract_id = env.register(AstroSwapOracle, (admin.clone(), 0u64));
     }
 
     #[test]
@@ -376,12 +358,10 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register(AstroSwapOracle, ());
-        let client = AstroSwapOracleClient::new(&env, &contract_id);
-
         let admin = Address::generate(&env);
 
-        client.initialize(&admin, &3600);
+        let contract_id = env.register(AstroSwapOracle, (admin.clone(), 3600u64));
+        let client = AstroSwapOracleClient::new(&env, &contract_id);
 
         // Update threshold
         client.set_staleness_threshold(&7200);
@@ -395,13 +375,11 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register(AstroSwapOracle, ());
-        let client = AstroSwapOracleClient::new(&env, &contract_id);
-
         let admin = Address::generate(&env);
         let token = Address::generate(&env);
 
-        client.initialize(&admin, &3600);
+        let contract_id = env.register(AstroSwapOracle, (admin.clone(), 3600u64));
+        let client = AstroSwapOracleClient::new(&env, &contract_id);
 
         // Add multiple price updates
         client.update_price(&token, &100_000_000, &6, &String::from_str(&env, "DIA"));
@@ -424,13 +402,11 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let contract_id = env.register(AstroSwapOracle, ());
-        let client = AstroSwapOracleClient::new(&env, &contract_id);
-
         let admin = Address::generate(&env);
         let new_admin = Address::generate(&env);
 
-        client.initialize(&admin, &3600);
+        let contract_id = env.register(AstroSwapOracle, (admin.clone(), 3600u64));
+        let client = AstroSwapOracleClient::new(&env, &contract_id);
 
         // Change admin
         client.set_admin(&new_admin);

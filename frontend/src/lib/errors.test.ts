@@ -207,5 +207,17 @@ describe('errors', () => {
         expect(message[0]).toMatch(/[A-Z]/); // Starts with capital
       });
     });
+
+    it('handles unknown high error codes', () => {
+      const result = parseContractError(550);
+      expect(result.title).toBe('Contract Error'); // Unknown codes get default title
+      expect(result.isRetryable).toBe(true); // Unknown errors are retryable
+    });
+
+    it('detects network errors from message', () => {
+      const networkError = new Error('Network timeout occurred');
+      const result = parseError(networkError);
+      expect(result.isRetryable).toBe(true);
+    });
   });
 });

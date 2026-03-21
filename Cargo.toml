@@ -26,6 +26,8 @@ repository = "https://github.com/astro-shiba/astroswap"
 soroban-sdk = "25.2.0"
 soroban-token-sdk = "25.2.0"
 astro-core-shared = { git = "https://github.com/nunalabs/astro-core", tag = "v1.5.0" }
+# Force getrandom to use wasm-friendly features
+getrandom = { version = "0.2", features = ["js"] }
 
 [profile.release]
 opt-level = "z"

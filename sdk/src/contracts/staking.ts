@@ -219,6 +219,35 @@ export class StakingClient extends BaseContractClient {
     return this.execute<void>('set_paused', this.boolToScVal(paused));
   }
 
+  /**
+   * Fund rewards pool (admin only)
+   *
+   * # Security
+   * Only the admin can fund rewards to prevent:
+   * - Dilution attacks with worthless tokens
+   * - Spam deposits
+   * - Confusion about legitimate rewards
+   *
+   * @param admin - Admin address (must be contract admin)
+   * @param amount - Amount of reward tokens to deposit
+   * @returns Promise with transaction result
+   *
+   * @example
+   * ```typescript
+   * const result = await staking.fundRewards(
+   *   adminAddress,
+   *   1000000000n  // 100 reward tokens (assuming 7 decimals)
+   * );
+   * ```
+   */
+  async fundRewards(admin: string, amount: bigint): Promise<TransactionResult<void>> {
+    return this.execute<void>(
+      'fund_rewards',
+      this.addressToScVal(admin),
+      this.i128ToScVal(amount)
+    );
+  }
+
   // ==================== Helper Methods ====================
 
   /**

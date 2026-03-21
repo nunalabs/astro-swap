@@ -1,9 +1,8 @@
 import { memo, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTransactionStore } from '../../stores/transactionStore';
+import { getExplorerLink } from '../../lib/constants';
 import type { Transaction } from '../../types';
-
-const STELLAR_EXPLORER_URL = 'https://testnet.stellarchain.io/transactions';
 
 /**
  * Transaction status badge with animation
@@ -118,7 +117,7 @@ const TransactionRow = memo(function TransactionRow({ tx }: { tx: Transaction })
       <div className="flex items-center gap-2">
         <StatusBadge status={tx.status} />
         <a
-          href={`${STELLAR_EXPLORER_URL}/${tx.hash}`}
+          href={getExplorerLink(tx.hash)}
           target="_blank"
           rel="noopener noreferrer"
           className="p-1.5 hover:bg-neutral-700 rounded-lg transition-colors"

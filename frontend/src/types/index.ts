@@ -96,13 +96,56 @@ export interface BridgeTransaction {
   timestamp: number;
 }
 
-// Transaction types
+// Transaction types with discriminated union for type safety
+export type TransactionDetails =
+  | {
+      type: 'swap';
+      tokenIn: string;
+      tokenOut: string;
+      amountIn: string;
+      amountOut: string;
+    }
+  | {
+      type: 'add_liquidity';
+      tokenA: string;
+      tokenB: string;
+      amountA: string;
+      amountB: string;
+    }
+  | {
+      type: 'remove_liquidity';
+      tokenA: string;
+      tokenB: string;
+      liquidity: string;
+    }
+  | {
+      type: 'stake';
+      poolAddress: string;
+      amount: string;
+    }
+  | {
+      type: 'unstake';
+      poolAddress: string;
+      amount: string;
+    }
+  | {
+      type: 'claim';
+      poolAddress: string;
+      rewardAmount: string;
+    }
+  | {
+      type: 'bridge';
+      fromChain: string;
+      toChain: string;
+      tokenAddress: string;
+      amount: string;
+    };
+
 export interface Transaction {
   hash: string;
-  type: 'swap' | 'add_liquidity' | 'remove_liquidity' | 'stake' | 'unstake' | 'claim' | 'bridge';
   status: 'pending' | 'success' | 'failed';
   timestamp: number;
-  details: Record<string, unknown>;
+  details: TransactionDetails;
 }
 
 // Chart data types

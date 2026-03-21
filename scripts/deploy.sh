@@ -6,7 +6,7 @@ set -e
 
 # Configuration
 NETWORK=${1:-testnet}
-BUILD_DIR="target/wasm32v1-none/release"
+BUILD_DIR="target/wasm32-unknown-unknown/release"
 CONTRACTS_DIR=".deployed"
 
 # Colors for output
@@ -63,8 +63,8 @@ setup_deployer() {
     success "Deployer address: ${DEPLOYER_ADDRESS}"
 }
 
-# Deploy a single contract
-deploy_contract() {
+# Install WASM and get hash (no deployment yet)
+install_wasm() {
     local contract_name=$1
     local wasm_file="${BUILD_DIR}/astroswap_${contract_name}.optimized.wasm"
 
@@ -72,106 +72,44 @@ deploy_contract() {
         error "WASM file not found: ${wasm_file}"
     fi
 
-    info "Deploying ${contract_name}..."
+    info "Installing ${contract_name} WASM..."
 
-    # Install WASM to get hash
     WASM_HASH=$(stellar contract install \
         --wasm "${wasm_file}" \
         --source "${DEPLOYER_KEY}" \
         --network "${NETWORK}" 2>&1 | tail -1)
 
     info "${contract_name} WASM hash: ${WASM_HASH}"
+    echo "${WASM_HASH}" > "${CONTRACTS_DIR}/${contract_name}.${NETWORK}.hash"
 
-    # Deploy contract instance
+    echo "${WASM_HASH}"
+}
+
+# Deploy contract with CAP-58 constructor (constructor args passed during deployment)
+# Usage: deploy_with_constructor <contract_name> <wasm_hash> "<constructor_args>"
+deploy_with_constructor() {
+    local contract_name=$1
+    local wasm_hash=$2
+    shift 2
+    local constructor_args=("$@")
+
+    info "Deploying ${contract_name} with constructor..."
+
+    # Deploy with constructor args
     CONTRACT_ID=$(stellar contract deploy \
-        --wasm-hash "${WASM_HASH}" \
+        --wasm-hash "${wasm_hash}" \
         --source "${DEPLOYER_KEY}" \
-        --network "${NETWORK}" 2>&1 | tail -1)
+        --network "${NETWORK}" \
+        -- \
+        "${constructor_args[@]}" \
+        2>&1 | tail -1)
 
-    success "${contract_name} deployed: ${CONTRACT_ID}"
+    success "${contract_name} deployed and initialized: ${CONTRACT_ID}"
 
     # Save contract ID
     echo "${CONTRACT_ID}" > "${CONTRACTS_DIR}/${contract_name}.${NETWORK}.id"
-    echo "${WASM_HASH}" > "${CONTRACTS_DIR}/${contract_name}.${NETWORK}.hash"
 
     echo "${CONTRACT_ID}"
-}
-
-# Initialize factory contract
-initialize_factory() {
-    local factory_id=$1
-    local pair_hash=$2
-
-    info "Initializing factory..."
-
-    stellar contract invoke \
-        --id "${factory_id}" \
-        --source "${DEPLOYER_KEY}" \
-        --network "${NETWORK}" \
-        -- \
-        initialize \
-        --admin "${DEPLOYER_ADDRESS}" \
-        --pair_wasm_hash "${pair_hash}" \
-        --protocol_fee_bps 30
-
-    success "Factory initialized"
-}
-
-# Initialize router contract
-initialize_router() {
-    local router_id=$1
-    local factory_id=$2
-
-    info "Initializing router..."
-
-    stellar contract invoke \
-        --id "${router_id}" \
-        --source "${DEPLOYER_KEY}" \
-        --network "${NETWORK}" \
-        -- \
-        initialize \
-        --factory "${factory_id}" \
-        --admin "${DEPLOYER_ADDRESS}"
-
-    success "Router initialized"
-}
-
-# Initialize staking contract
-initialize_staking() {
-    local staking_id=$1
-    local reward_token=$2
-
-    info "Initializing staking..."
-
-    stellar contract invoke \
-        --id "${staking_id}" \
-        --source "${DEPLOYER_KEY}" \
-        --network "${NETWORK}" \
-        -- \
-        initialize \
-        --admin "${DEPLOYER_ADDRESS}" \
-        --reward_token "${reward_token}"
-
-    success "Staking initialized"
-}
-
-# Initialize aggregator contract
-initialize_aggregator() {
-    local aggregator_id=$1
-    local factory_id=$2
-
-    info "Initializing aggregator..."
-
-    stellar contract invoke \
-        --id "${aggregator_id}" \
-        --source "${DEPLOYER_KEY}" \
-        --network "${NETWORK}" \
-        -- \
-        initialize \
-        --admin "${DEPLOYER_ADDRESS}" \
-        --astroswap_factory "${factory_id}"
-
-    success "Aggregator initialized"
 }
 
 # Main deployment flow
@@ -191,29 +129,28 @@ main() {
     # Setup deployer
     setup_deployer
 
-    # Deploy contracts in order
-    info "Starting deployment..."
+    # Deploy contracts in order using CAP-58 constructor pattern
+    info "Starting deployment with CAP-58 constructors..."
 
-    # 1. Deploy pair first (needed for factory to get hash)
-    PAIR_HASH=$(stellar contract install \
-        --wasm "${BUILD_DIR}/astroswap_pair.optimized.wasm" \
-        --source "${DEPLOYER_KEY}" \
-        --network "${NETWORK}" 2>&1 | tail -1)
-    echo "${PAIR_HASH}" > "${CONTRACTS_DIR}/pair.${NETWORK}.hash"
-    info "Pair WASM hash: ${PAIR_HASH}"
+    # 1. Install Pair WASM first (needed for factory constructor)
+    PAIR_HASH=$(install_wasm "pair")
 
-    # 2. Deploy and initialize factory
-    FACTORY_ID=$(deploy_contract "factory")
-    initialize_factory "${FACTORY_ID}" "${PAIR_HASH}"
+    # 2. Install and deploy Factory with constructor
+    FACTORY_HASH=$(install_wasm "factory")
+    FACTORY_ID=$(deploy_with_constructor "factory" "${FACTORY_HASH}" \
+        --admin "${DEPLOYER_ADDRESS}" \
+        --pair_wasm_hash "${PAIR_HASH}" \
+        --protocol_fee_bps 30)
 
-    # 3. Deploy and initialize router
-    ROUTER_ID=$(deploy_contract "router")
-    initialize_router "${ROUTER_ID}" "${FACTORY_ID}"
+    # 3. Install and deploy Router with constructor
+    ROUTER_HASH=$(install_wasm "router")
+    ROUTER_ID=$(deploy_with_constructor "router" "${ROUTER_HASH}" \
+        --factory "${FACTORY_ID}" \
+        --admin "${DEPLOYER_ADDRESS}")
 
-    # 4. Deploy and initialize staking
-    STAKING_ID=$(deploy_contract "staking")
+    # 4. Install and deploy Staking with constructor
     # Note: reward_token should be set to actual token address
-    # For testnet, using a placeholder
+    # For testnet, using XLM native as placeholder
     if [ "${NETWORK}" == "testnet" ]; then
         # Use XLM native asset as placeholder
         REWARD_TOKEN="CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
@@ -221,16 +158,22 @@ main() {
         warn "Set REWARD_TOKEN for mainnet deployment"
         REWARD_TOKEN="${REWARD_TOKEN:-CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC}"
     fi
-    initialize_staking "${STAKING_ID}" "${REWARD_TOKEN}"
 
-    # 5. Deploy and initialize aggregator
-    AGGREGATOR_ID=$(deploy_contract "aggregator")
-    initialize_aggregator "${AGGREGATOR_ID}" "${FACTORY_ID}"
+    STAKING_HASH=$(install_wasm "staking")
+    STAKING_ID=$(deploy_with_constructor "staking" "${STAKING_HASH}" \
+        --admin "${DEPLOYER_ADDRESS}" \
+        --reward_token "${REWARD_TOKEN}")
 
-    # 6. Deploy bridge (optional, for Astro-Shiba integration)
-    BRIDGE_ID=$(deploy_contract "bridge")
-    # Bridge initialization requires launchpad address - skip for now
-    info "Bridge deployed but not initialized (requires launchpad address)"
+    # 5. Install and deploy Aggregator with constructor
+    AGGREGATOR_HASH=$(install_wasm "aggregator")
+    AGGREGATOR_ID=$(deploy_with_constructor "aggregator" "${AGGREGATOR_HASH}" \
+        --admin "${DEPLOYER_ADDRESS}" \
+        --astroswap_factory "${FACTORY_ID}")
+
+    # 6. Install Bridge (deployment requires launchpad address - install only for now)
+    BRIDGE_HASH=$(install_wasm "bridge")
+    info "Bridge WASM installed but not deployed (requires launchpad address)"
+    BRIDGE_ID="(pending - requires launchpad)"
 
     # Print summary
     echo ""

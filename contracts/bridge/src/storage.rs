@@ -19,6 +19,7 @@ pub enum DataKey {
     Launchpad,
     QuoteToken, // XLM or USDC address
     GraduationCount,
+    DeadAddress, // Cached dead address for LP token burning (optimization)
 
     // Persistent storage
     GraduatedToken(Address), // Token address -> GraduatedToken info
@@ -132,6 +133,20 @@ pub fn set_quote_token(env: &Env, quote_token: &Address) {
     env.storage()
         .instance()
         .set(&DataKey::QuoteToken, quote_token);
+}
+
+/// Get dead address for LP token burning
+/// Returns cached address to avoid repeated string parsing
+pub fn get_dead_address(env: &Env) -> Result<Address, AstroSwapError> {
+    env.storage()
+        .instance()
+        .get::<DataKey, Address>(&DataKey::DeadAddress)
+        .ok_or(AstroSwapError::NotInitialized)
+}
+
+/// Set dead address (called once in constructor)
+pub fn set_dead_address(env: &Env, address: &Address) {
+    env.storage().instance().set(&DataKey::DeadAddress, address);
 }
 
 /// Get graduation count

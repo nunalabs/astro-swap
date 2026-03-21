@@ -1,0 +1,20 @@
+{
+  "network": "mainnet",
+  "description": "AstroSwap Mainnet Configuration - Restrictive settings for production",
+  "factory": {
+    "public_pair_creation": false,
+    "protocol_fee_bps": 30,
+    "paused": false
+  },
+  "router": {
+    "paused": false
+  },
+  "staking": {
+    "paused": false
+  },
+  "notes": {
+    "public_pair_creation": "false = Only admin can create pools (anti-spam)",
+    "protocol_fee_bps": "30 = 0.30% protocol fee (0.25% to LPs + 0.05% to treasury)",
+    "paused": "false = Contracts are active"
+  }
+}

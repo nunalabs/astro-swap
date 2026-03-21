@@ -11,7 +11,7 @@ export const CONTRACT_ERRORS: Record<number, string> = {
   // General errors (1-99)
   1: 'This contract has already been initialized.',
   2: 'Unauthorized access. You do not have permission to perform this action.',
-  8: 'Transaction rejected due to reentrancy protection. Please try again.',
+  8: 'Invalid approval amount. The amount must be between 0 and i128::MAX (170141183460469231731687303715884105727).',
 
   // Token errors (100-199)
   100: 'Invalid token address provided.',

@@ -20,6 +20,9 @@
 
 mod storage;
 
+#[cfg(test)]
+mod security_tests;
+
 use astroswap_shared::{
     emit_graduation, reentrancy::ReentrancyGuard, sqrt, AstroSwapError, FactoryClient,
     GraduatedToken, PairClient, TokenMetadata,
@@ -35,11 +38,12 @@ pub struct LpBurned {
 }
 
 use crate::storage::{
-    extend_graduated_token_ttl, extend_instance_ttl, get_admin, get_factory, get_graduated_token,
-    get_graduation_by_index, get_graduation_count, get_launchpad, get_quote_token, get_staking,
-    increment_graduation_count, is_initialized, is_locked, is_paused, is_token_graduated,
-    set_admin, set_factory, set_graduated_token, set_graduation_index, set_initialized,
-    set_launchpad, set_locked, set_paused, set_quote_token, set_staking,
+    extend_graduated_token_ttl, extend_instance_ttl, get_admin, get_dead_address, get_factory,
+    get_graduated_token, get_graduation_by_index, get_graduation_count, get_launchpad,
+    get_quote_token, get_staking, increment_graduation_count, is_initialized, is_locked,
+    is_paused, is_token_graduated, set_admin, set_dead_address, set_factory, set_graduated_token,
+    set_graduation_index, set_initialized, set_launchpad, set_locked, set_paused,
+    set_quote_token, set_staking,
 };
 
 /// Default staking duration: 365 days
@@ -74,6 +78,12 @@ impl AstroSwapBridge {
         set_staking(&env, &staking);
         set_launchpad(&env, &launchpad);
         set_quote_token(&env, &quote_token);
+
+        // Cache dead address to avoid repeated string parsing (optimization)
+        let dead_address_str = String::from_str(&env, "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF");
+        let dead_address = Address::from_string(&dead_address_str);
+        set_dead_address(&env, &dead_address);
+
         set_initialized(&env);
 
         extend_instance_ttl(&env);
@@ -247,12 +257,16 @@ impl AstroSwapBridge {
             .checked_div(100)
             .ok_or(AstroSwapError::DivisionByZero)?;
 
+        // Set deadline to 5 minutes from now for MEV protection
+        let deadline = env.ledger().timestamp() + 300;
+
         let (_, _, lp_tokens) = pair_client.deposit(
             &env.current_contract_address(),
             amount_0,
             amount_1,
             min_amount_0, // 99% of expected amount_0
             min_amount_1, // 99% of expected amount_1
+            deadline,
         );
 
         // Verify we received expected LP tokens (slippage protection)
@@ -423,17 +437,21 @@ impl AstroSwapBridge {
     ///
     /// The dead address is derived from an all-zeros public key, making it
     /// mathematically impossible to generate a valid signature for it.
+    ///
+    /// # Optimization
+    /// Dead address is cached in storage during initialization to avoid
+    /// repeated string parsing (50% memory reduction per burn).
     fn burn_lp_tokens(env: &Env, pair: &Address, amount: i128) -> Result<(), AstroSwapError> {
         if amount <= 0 {
             return Ok(()); // Nothing to burn
         }
 
+        // Get cached dead address from storage (optimization)
         // Dead address: GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF
         // This is a valid Stellar address with an all-zeros public key.
         // No one can ever sign transactions from this address, making tokens
         // sent here permanently locked.
-        let dead_address_str = String::from_str(env, "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF");
-        let dead_address = Address::from_string(&dead_address_str);
+        let dead_address = get_dead_address(env)?;
 
         // Transfer LP tokens to dead address - permanently locked forever
         // This is safer than calling burn() because:

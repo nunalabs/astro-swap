@@ -1,1 +1,1 @@
-CDVJIG57HTTKD3A4QD6JSTL6ODBAW26DDJABOF7ZRQR2MELLQT7UV6RS
+❌ error: cannot parse WASM hash ❌ error: rpc-url is used but network passphrase is missing, use `--network-passphrase` or `STELLAR_NETWORK_PASSPHRASE`: the strkey is invalid

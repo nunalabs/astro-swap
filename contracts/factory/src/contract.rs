@@ -31,6 +31,7 @@ impl AstroSwapFactory {
         set_admin(&env, &admin);
         set_pair_wasm_hash(&env, &pair_wasm_hash);
         set_protocol_fee_bps(&env, protocol_fee_bps);
+        set_public_pair_creation(&env, true); // Enable by default (testnet-friendly)
         set_initialized(&env);
 
         extend_instance_ttl(&env);
@@ -57,6 +58,7 @@ impl AstroSwapFactory {
         set_admin(&env, &admin);
         set_pair_wasm_hash(&env, &pair_wasm_hash);
         set_protocol_fee_bps(&env, protocol_fee_bps);
+        set_public_pair_creation(&env, true); // Enable by default (testnet-friendly)
         set_initialized(&env);
 
         extend_instance_ttl(&env);
@@ -91,6 +93,11 @@ impl AstroSwapFactory {
         if token_a == token_b {
             return Err(AstroSwapError::SameToken);
         }
+
+        // Validate that both addresses implement token interface
+        // Uses lightweight decimals() check that works with SAC and custom tokens
+        Self::validate_token_contract(&env, &token_a)?;
+        Self::validate_token_contract(&env, &token_b)?;
 
         // Check if pair already exists
         if get_pair(&env, &token_a, &token_b).is_some() {
@@ -410,6 +417,30 @@ impl AstroSwapFactory {
         if is_paused(env) {
             return Err(AstroSwapError::ContractPaused);
         }
+        Ok(())
+    }
+
+    /// Validate that an address is a valid Soroban token contract
+    ///
+    /// # Security
+    /// This prevents creating pairs with invalid addresses, which could:
+    /// 1. Waste storage and confuse users in the UI
+    /// 2. Create pairs with non-token contracts that can't be traded
+    ///
+    /// # Implementation
+    /// Attempts to call token.decimals(). If this succeeds, we know
+    /// the address implements at least part of the token interface.
+    /// This is a lightweight check that works with both SAC and custom tokens.
+    fn validate_token_contract(env: &Env, token: &Address) -> Result<(), AstroSwapError> {
+        use soroban_sdk::token;
+
+        // Try to get token decimals - minimal validation
+        let token_client = token::Client::new(env, token);
+
+        // Calling decimals() - if it panics/fails, the error will be caught
+        // by the Soroban runtime and converted to an error return
+        let _ = token_client.decimals();
+
         Ok(())
     }
 }
