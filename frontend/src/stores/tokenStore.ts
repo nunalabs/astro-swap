@@ -192,10 +192,10 @@ export const useTokenStore = create<TokenState>((set, get) => ({
       const { customTokens, indexedTokens } = get();
 
       const allTokens = mergeTokenLists(
-        [whitelistTokens],
-        [expertTokens],
-        [indexedTokens],
-        [customTokens]
+        whitelistTokens,
+        expertTokens,
+        indexedTokens,
+        customTokens
       );
 
       useTokenListStore.getState().setTokens(allTokens);
@@ -217,7 +217,7 @@ export const useTokenStore = create<TokenState>((set, get) => ({
 
     try {
       const { customTokens, indexedTokens } = get();
-      const allTokens = mergeTokenLists([BASE_TOKENS], [indexedTokens], [customTokens]);
+      const allTokens = mergeTokenLists(BASE_TOKENS, indexedTokens, customTokens);
 
       useTokenListStore.getState().setTokens(allTokens);
 
@@ -251,7 +251,7 @@ export const useTokenStore = create<TokenState>((set, get) => ({
       console.log(`Discovered ${discoveredTokens.length} tokens from factory`);
 
       const { customTokens } = get();
-      const allTokens = mergeTokenLists([BASE_TOKENS], [discoveredTokens], [customTokens]);
+      const allTokens = mergeTokenLists(BASE_TOKENS, discoveredTokens, customTokens);
 
       useTokenListStore.getState().setTokens(allTokens);
 

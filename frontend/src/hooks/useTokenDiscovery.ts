@@ -46,7 +46,7 @@ export function useTokenDiscovery() {
 
       // Merge with existing tokens
       const currentTokens = useTokenListStore.getState().tokens;
-      const allTokens = mergeTokenLists([currentTokens], [discoveredTokens]);
+      const allTokens = mergeTokenLists(currentTokens, discoveredTokens);
 
       setTokens(allTokens);
       setLastIndexTime(Date.now());
@@ -83,9 +83,9 @@ export function useTokenDiscovery() {
       // Merge with existing tokens
       const currentTokens = useTokenListStore.getState().tokens;
       const allTokens = mergeTokenLists(
-        [whitelistTokens],
-        [expertTokens],
-        [currentTokens]
+        whitelistTokens,
+        expertTokens,
+        currentTokens
       );
 
       setTokens(allTokens);

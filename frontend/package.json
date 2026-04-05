@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "AstroSwap DEX Frontend - Professional AMM Interface on Stellar",
   "type": "module",
+  "overrides": {
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

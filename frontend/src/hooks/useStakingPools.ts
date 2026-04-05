@@ -53,8 +53,8 @@ async function transformStakingPool(
   try {
     // Fetch token metadata in parallel
     const [lpTokenMeta, rewardTokenMeta] = await Promise.all([
-      fetchTokenMetadata(contractPool.lp_token, userAddress || undefined),
-      fetchTokenMetadata(contractPool.reward_token, userAddress || undefined),
+      fetchTokenMetadata(contractPool.lp_token),
+      fetchTokenMetadata(contractPool.reward_token),
     ]);
 
     if (!lpTokenMeta || !rewardTokenMeta) {

@@ -22,7 +22,6 @@ export class CircuitBreaker {
   private state: CircuitState = CircuitState.CLOSED;
   private failureCount = 0;
   private successCount = 0;
-  private lastFailureTime = 0;
   private nextAttemptTime = 0;
   private recentFailures: number[] = [];
 
@@ -85,7 +84,6 @@ export class CircuitBreaker {
    */
   private onFailure(): void {
     const now = Date.now();
-    this.lastFailureTime = now;
     this.recentFailures.push(now);
 
     // Remove old failures outside window

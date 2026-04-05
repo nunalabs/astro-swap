@@ -30,21 +30,37 @@ describe('TransactionTracker', () => {
   const mockTransactions: Transaction[] = [
     {
       hash: 'tx1',
-      type: 'swap',
       status: 'pending',
       timestamp: Date.now() - 30000, // 30 seconds ago
+      details: {
+        type: 'swap',
+        tokenIn: 'XLM',
+        tokenOut: 'USDC',
+        amountIn: '100',
+        amountOut: '50',
+      },
     },
     {
       hash: 'tx2',
-      type: 'add_liquidity',
       status: 'success',
       timestamp: Date.now() - 120000, // 2 minutes ago
+      details: {
+        type: 'add_liquidity',
+        tokenA: 'XLM',
+        tokenB: 'USDC',
+        amountA: '100',
+        amountB: '50',
+      },
     },
     {
       hash: 'tx3',
-      type: 'stake',
       status: 'failed',
       timestamp: Date.now() - 3600000, // 1 hour ago
+      details: {
+        type: 'stake',
+        token: 'XLM',
+        amount: '100',
+      },
     },
   ];
 
@@ -306,11 +322,17 @@ describe('TransactionTracker', () => {
 
     it('should show up to 10 transactions', async () => {
       const user = userEvent.setup();
-      const manyTransactions = Array.from({ length: 15 }, (_, i) => ({
+      const manyTransactions: Transaction[] = Array.from({ length: 15 }, (_, i) => ({
         hash: `tx${i}`,
-        type: 'swap' as const,
         status: 'success' as const,
         timestamp: Date.now() - i * 60000,
+        details: {
+          type: 'swap' as const,
+          tokenIn: 'XLM',
+          tokenOut: 'USDC',
+          amountIn: '100',
+          amountOut: '50',
+        },
       }));
 
       vi.mocked(useTransactionStore).mockImplementation((selector: any) => {
@@ -331,11 +353,17 @@ describe('TransactionTracker', () => {
 
     it('should show footer when more than 10 transactions', async () => {
       const user = userEvent.setup();
-      const manyTransactions = Array.from({ length: 15 }, (_, i) => ({
+      const manyTransactions: Transaction[] = Array.from({ length: 15 }, (_, i) => ({
         hash: `tx${i}`,
-        type: 'swap' as const,
         status: 'success' as const,
         timestamp: Date.now(),
+        details: {
+          type: 'swap' as const,
+          tokenIn: 'XLM',
+          tokenOut: 'USDC',
+          amountIn: '100',
+          amountOut: '50',
+        },
       }));
 
       vi.mocked(useTransactionStore).mockImplementation((selector: any) => {

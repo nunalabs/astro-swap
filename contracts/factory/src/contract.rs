@@ -25,7 +25,8 @@ impl AstroSwapFactory {
     ) {
         // Validate fee (max 1% = 100 bps)
         if protocol_fee_bps > 100 {
-            panic!("fee too high");
+            // Use panic_with_error for proper error encoding in constructor
+            env.panic_with_error(AstroSwapError::FeeTooHigh);
         }
 
         set_admin(&env, &admin);

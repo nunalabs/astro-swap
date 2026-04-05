@@ -219,7 +219,7 @@ export const useTokenListStore = create<TokenListState>()(
 
       mergeTokens: (newTokens: Token[]) => {
         set((state) => ({
-          tokens: mergeTokenLists([state.tokens], [newTokens]),
+          tokens: mergeTokenLists(state.tokens, newTokens),
         }));
       },
     }),
@@ -239,7 +239,7 @@ export const useTokenListStore = create<TokenListState>()(
 
           // Merge with fresh whitelist
           const whitelistTokens = getWhitelistTokens();
-          state.tokens = mergeTokenLists([whitelistTokens], [state.customTokens]);
+          state.tokens = mergeTokenLists(whitelistTokens, state.customTokens);
 
           console.log(`Token list rehydrated: ${state.tokens.length} tokens`);
         }

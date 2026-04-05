@@ -21,7 +21,6 @@ class RateLimiter {
   private config: RateLimiterConfig;
   private queue: QueuedRequest<unknown>[] = [];
   private processing = false;
-  private lastRequestTime = 0;
   private requestCount = 0;
   private windowStart = Date.now();
 
@@ -86,7 +85,6 @@ class RateLimiter {
         const result = await request.fn();
         request.resolve(result);
         this.requestCount++;
-        this.lastRequestTime = Date.now();
 
         // Small delay between requests to avoid bursts
         await this.sleep(100);

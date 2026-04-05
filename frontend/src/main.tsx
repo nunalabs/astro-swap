@@ -5,17 +5,15 @@ import { Buffer } from 'buffer';
 declare global {
   interface Window {
     Buffer: typeof Buffer;
-    global: typeof globalThis;
-    process: {
-      env: Record<string, string | undefined>;
-    };
+    global: Window & typeof globalThis;
+    process: { env: Record<string, string | undefined> };
   }
 }
 
 window.Buffer = Buffer;
-window.global = window;
+(window as Window & { global?: Window & typeof globalThis }).global = window;
 if (!window.process) {
-  window.process = { env: {} };
+  (window as Window & { process?: { env: Record<string, string | undefined> } }).process = { env: {} };
 }
 
 // Initialize Sentry error tracking (before React)

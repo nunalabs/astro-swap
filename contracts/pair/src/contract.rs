@@ -25,7 +25,8 @@ impl AstroSwapPair {
     pub fn __constructor(env: Env, factory: Address, token_0: Address, token_1: Address) {
         // Tokens must be different
         if token_0 == token_1 {
-            panic!("same token");
+            // Use panic_with_error for proper error encoding in constructor
+            env.panic_with_error(AstroSwapError::SameToken);
         }
 
         set_factory(&env, &factory);

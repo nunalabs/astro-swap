@@ -165,17 +165,20 @@ export async function withRetry<T>(
       // Last attempt - don't wait, just throw
       if (attempt === opts.maxAttempts - 1) {
         console.error(`❌ Max retries (${opts.maxAttempts}) exceeded`);
+        const errMsg = error instanceof Error ? error.message : String(error);
+        const errObj = error instanceof Error ? error : new Error(errMsg);
         throw new MaxRetriesExceededError(
-          `Operation failed after ${opts.maxAttempts} attempts: ${error.message}`,
+          `Operation failed after ${opts.maxAttempts} attempts: ${errMsg}`,
           opts.maxAttempts,
-          error
+          errObj
         );
       }
 
       // Calculate delay for next attempt
       const delay = calculateDelay(attempt, opts);
+      const retryErrMsg = error instanceof Error ? error.message : String(error);
       console.warn(
-        `⚠️ Retryable error (attempt ${attempt + 1}/${opts.maxAttempts}): ${error.message}`
+        `⚠️ Retryable error (attempt ${attempt + 1}/${opts.maxAttempts}): ${retryErrMsg}`
       );
       console.log(`⏳ Waiting ${(delay / 1000).toFixed(1)}s before retry...`);
 

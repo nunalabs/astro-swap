@@ -63,12 +63,6 @@ export const walletKit = new StellarWalletsKit({
   network: NETWORK === 'mainnet' ? WalletNetwork.PUBLIC : WalletNetwork.TESTNET,
   selectedWalletId: FREIGHTER_ID,
   modules: allowAllModules(),
-  // Required for web-based wallets like Albedo
-  horizonUrl: NETWORK === 'mainnet'
-    ? 'https://horizon.stellar.org'
-    : 'https://horizon-testnet.stellar.org',
-  // Albedo callback URL - critical for Albedo to work
-  defaultNetwork: NETWORK === 'mainnet' ? WalletNetwork.PUBLIC : WalletNetwork.TESTNET,
 });
 
 // Wallet IDs for reference
@@ -248,7 +242,9 @@ export async function signTransaction(
           console.log(`🔄 Using wallet from store: ${walletIdToUse}`);
 
           // Set it in walletKit (may or may not work, but doesn't matter)
-          walletKit.setWallet(walletIdToUse);
+          if (walletIdToUse) {
+            walletKit.setWallet(walletIdToUse);
+          }
         }
       }
     } catch (e) {

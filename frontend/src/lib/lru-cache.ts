@@ -56,7 +56,9 @@ export class LRUCache<K, V> {
     if (this.cache.size > this.maxSize) {
       // First key is the oldest (least recently used)
       const firstKey = this.cache.keys().next().value;
-      this.cache.delete(firstKey);
+      if (firstKey !== undefined) {
+        this.cache.delete(firstKey);
+      }
     }
   }
 

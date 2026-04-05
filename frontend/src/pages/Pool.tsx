@@ -23,7 +23,6 @@ export function Pool() {
 
   const isConnected = useWalletStore((state) => state.isConnected);
   const slippageTolerance = useSettingsStore((state) => state.slippageTolerance);
-  const addToast = useSettingsStore((state) => state.addToast);
 
   const { pools, isLoading, addLiquidity, removeLiquidity, isAddingLiquidity, isRemovingLiquidity } = usePool();
 
@@ -161,7 +160,7 @@ export function Pool() {
 
   // Calculate pool share and current price
   const poolInfo = useMemo(() => {
-    if (!existingPool || !amountA || !amountB) return null;
+    if (!existingPool || !amountA || !amountB || !tokenA || !tokenB) return null;
 
     try {
       const reserve0 = BigInt(existingPool.reserve0);

@@ -3,67 +3,80 @@
   "$schema": "../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "sourceRoot": "astro-swap",
-  "tags": ["typescript", "vite", "rust", "dex", "consumer"],
+  "tags": ["scope:swap", "type:dex", "platform:stellar"],
   "implicitDependencies": ["astro-core"],
   "targets": {
     "build": {
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "make build"
+          "echo 'Building astro-swap...'"
         ],
-        "cwd": "astro-swap",
-        "parallel": false
+        "cwd": "astro-swap"
       },
-      "dependsOn": ["^build"],
+      "dependsOn": ["build-contracts", "build-sdk", "build-frontend"],
       "outputs": [
         "{projectRoot}/frontend/dist",
         "{projectRoot}/sdk/dist",
-        "{projectRoot}/contracts/*/target/wasm32-unknown-unknown/release"
+        "{projectRoot}/target/wasm32-unknown-unknown/release"
       ],
       "cache": true
     },
     "build-contracts": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "make build-contracts",
-        "cwd": "astro-swap"
+        "commands": [
+          "cargo build --target wasm32-unknown-unknown --release -p astroswap-factory",
+          "cargo build --target wasm32-unknown-unknown --release -p astroswap-pair",
+          "cargo build --target wasm32-unknown-unknown --release -p astroswap-router",
+          "cargo build --target wasm32-unknown-unknown --release -p astroswap-staking",
+          "cargo build --target wasm32-unknown-unknown --release -p astroswap-aggregator",
+          "cargo build --target wasm32-unknown-unknown --release -p astroswap-bridge"
+        ],
+        "cwd": "astro-swap",
+        "parallel": true
       },
-      "outputs": ["{projectRoot}/contracts/*/target/wasm32-unknown-unknown/release"],
-      "cache": true
-    },
-    "build-frontend": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "cd frontend && pnpm build",
-        "cwd": "astro-swap"
-      },
-      "dependsOn": ["build-contracts"],
-      "outputs": ["{projectRoot}/frontend/dist"],
+      "outputs": ["{projectRoot}/target/wasm32-unknown-unknown/release"],
       "cache": true
     },
     "build-sdk": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "make sdk-build",
-        "cwd": "astro-swap"
+        "command": "pnpm build",
+        "cwd": "astro-swap/sdk"
       },
       "outputs": ["{projectRoot}/sdk/dist"],
+      "cache": true
+    },
+    "build-frontend": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm build",
+        "cwd": "astro-swap/frontend"
+      },
+      "dependsOn": ["build-sdk"],
+      "outputs": ["{projectRoot}/frontend/dist"],
       "cache": true
     },
     "dev": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "cd frontend && pnpm dev",
-        "cwd": "astro-swap"
-      },
-      "dependsOn": ["^build"]
+        "command": "pnpm dev",
+        "cwd": "astro-swap/frontend"
+      }
+    },
+    "dev:indexer": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm dev",
+        "cwd": "astro-swap/indexer"
+      }
     },
     "test": {
       "executor": "nx:run-commands",
+      "dependsOn": ["test-contracts", "test-sdk", "test-frontend"],
       "options": {
-        "command": "make test",
-        "cwd": "astro-swap"
+        "command": "echo 'All tests passed'"
       },
       "cache": true
     },
@@ -71,22 +84,38 @@
       "executor": "nx:run-commands",
       "options": {
         "command": "cargo test --workspace",
-        "cwd": "astro-swap/contracts"
+        "cwd": "astro-swap"
+      },
+      "cache": true
+    },
+    "test-sdk": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm test",
+        "cwd": "astro-swap/sdk"
       },
       "cache": true
     },
     "test-frontend": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "cd frontend && pnpm test",
-        "cwd": "astro-swap"
+        "command": "pnpm test",
+        "cwd": "astro-swap/frontend"
       },
       "cache": true
     },
     "lint": {
       "executor": "nx:run-commands",
+      "dependsOn": ["lint-rust", "lint-frontend", "lint-sdk"],
       "options": {
-        "command": "make lint",
+        "command": "echo 'Lint passed'"
+      },
+      "cache": true
+    },
+    "lint-rust": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo clippy --workspace -- -D warnings",
         "cwd": "astro-swap"
       },
       "cache": true
@@ -94,39 +123,61 @@
     "lint-frontend": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "cd frontend && pnpm lint",
-        "cwd": "astro-swap"
+        "command": "pnpm lint",
+        "cwd": "astro-swap/frontend"
+      },
+      "cache": true
+    },
+    "lint-sdk": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm lint",
+        "cwd": "astro-swap/sdk"
       },
       "cache": true
     },
     "typecheck": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "cd frontend && pnpm typecheck",
-        "cwd": "astro-swap"
+        "commands": [
+          "cd frontend && pnpm typecheck",
+          "cd sdk && pnpm typecheck"
+        ],
+        "cwd": "astro-swap",
+        "parallel": true
       },
       "cache": true
     },
     "fmt": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "make fmt",
-        "cwd": "astro-swap"
+        "commands": [
+          "cargo fmt --all",
+          "cd frontend && pnpm lint --fix || true",
+          "cd sdk && pnpm lint --fix || true"
+        ],
+        "cwd": "astro-swap",
+        "parallel": false
       }
     },
-    "bindings": {
+    "optimize": {
       "executor": "nx:run-commands",
+      "dependsOn": ["build-contracts"],
       "options": {
-        "command": "make bindings",
+        "command": "for wasm in target/wasm32-unknown-unknown/release/astroswap_*.wasm; do stellar contract optimize --wasm \"$wasm\" --wasm-out \"${wasm%.wasm}.optimized.wasm\" 2>/dev/null || true; done",
         "cwd": "astro-swap"
       },
-      "dependsOn": ["build-contracts"]
+      "outputs": ["{projectRoot}/target/wasm32-unknown-unknown/release/*.optimized.wasm"]
     },
     "clean": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "make clean",
-        "cwd": "astro-swap"
+        "commands": [
+          "cargo clean",
+          "rm -rf frontend/dist sdk/dist"
+        ],
+        "cwd": "astro-swap",
+        "parallel": false
       }
     }
   }

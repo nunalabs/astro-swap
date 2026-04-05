@@ -57,8 +57,8 @@ export function usePool() {
 
           // Get token metadata
           const [token0Meta, token1Meta] = await Promise.all([
-            fetchTokenMetadata(pairTokens.token0, address),
-            fetchTokenMetadata(pairTokens.token1, address),
+            fetchTokenMetadata(pairTokens.token0),
+            fetchTokenMetadata(pairTokens.token1),
           ]);
 
           if (!token0Meta || !token1Meta) {

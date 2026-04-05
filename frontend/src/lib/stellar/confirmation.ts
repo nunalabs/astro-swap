@@ -5,7 +5,6 @@
  * Handles RPC instability by providing fallbacks.
  */
 
-import * as StellarSdk from '@stellar/stellar-sdk';
 import { NETWORK_CONFIG, horizonServer, sorobanServer, getStellarExpertTxUrl } from './config';
 import { StellarTransactionError, isHttpError } from './errors';
 import { rpcLimiter } from '../rate-limiter';
@@ -39,12 +38,13 @@ export async function confirmViaHorizon(
         .transaction(txHash)
         .call();
 
-      console.log(`✅ Transaction confirmed via Horizon (ledger ${tx.ledger})`);
+      const ledgerNum = typeof tx.ledger === 'function' ? undefined : Number(tx.ledger);
+      console.log(`✅ Transaction confirmed via Horizon (ledger ${ledgerNum})`);
 
       return {
         status: tx.successful ? 'SUCCESS' : 'FAILED',
         hash: txHash,
-        ledger: tx.ledger,
+        ledger: ledgerNum,
       };
     } catch (error: unknown) {
       // 404 means transaction not found yet (still pending)
@@ -62,8 +62,9 @@ export async function confirmViaHorizon(
       }
 
       // Other errors are real failures
+      const errorMessage = error instanceof Error ? error.message : String(error);
       throw new StellarTransactionError(
-        `Failed to confirm transaction: ${error.message}`,
+        `Failed to confirm transaction: ${errorMessage}`,
         'CONFIRMATION_ERROR',
         error
       );

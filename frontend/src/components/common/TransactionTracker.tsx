@@ -47,8 +47,8 @@ const StatusBadge = memo(function StatusBadge({ status }: { status: Transaction[
 /**
  * Format transaction type for display
  */
-function formatTxType(type: Transaction['type']): string {
-  const typeLabels: Record<Transaction['type'], string> = {
+function formatTxType(type: Transaction['details']['type']): string {
+  const typeLabels: Record<Transaction['details']['type'], string> = {
     swap: 'Swap',
     add_liquidity: 'Add Liquidity',
     remove_liquidity: 'Remove Liquidity',
@@ -109,7 +109,7 @@ const TransactionRow = memo(function TransactionRow({ tx }: { tx: Transaction })
         </div>
 
         <div>
-          <div className="font-medium text-sm">{formatTxType(tx.type)}</div>
+          <div className="font-medium text-sm">{formatTxType(tx.details.type)}</div>
           <div className="text-xs text-neutral-400">{formatRelativeTime(tx.timestamp)}</div>
         </div>
       </div>

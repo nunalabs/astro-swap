@@ -157,7 +157,8 @@ impl ConcurrentScenario {
         let pair_client = PairClient::new(env, pair_address);
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            pair_client.deposit(user, amount_0, amount_1, 0, 0)
+            // Use far-future deadline for stress tests
+            pair_client.deposit(user, amount_0, amount_1, 0, 0, u64::MAX)
         }));
 
         match result {
@@ -189,7 +190,8 @@ impl ConcurrentScenario {
         let pair_client = PairClient::new(env, pair_address);
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            pair_client.withdraw(user, shares, 0, 0)
+            // Use far-future deadline for stress tests
+            pair_client.withdraw(user, shares, 0, 0, u64::MAX)
         }));
 
         match result {
