@@ -500,7 +500,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "fee too high")]
+    #[should_panic(expected = "Error(Contract, #501)")]
     fn test_constructor_fee_too_high_panics() {
         let env = Env::default();
         env.mock_all_auths();
@@ -508,7 +508,7 @@ mod tests {
         let admin = Address::generate(&env);
         let wasm_hash = BytesN::from_array(&env, &[0u8; 32]);
 
-        // Constructor should panic with "fee too high" when fee > 100 bps
+        // Constructor should panic with FeeTooHigh error (#501) when fee > 100 bps
         let _factory_addr = env.register(
             AstroSwapFactory,
             (admin.clone(), wasm_hash.clone(), 200u32), // 2% fee - too high

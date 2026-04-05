@@ -24,10 +24,11 @@ export const NETWORK_CONFIG = {
     : 'https://horizon-testnet.stellar.org',
 
   // Soroban RPC (for contract calls and simulation)
+  // Using Nodies - Gateway.fm having CORS issues as of 2026-04-06
   sorobanRpcUrl: import.meta.env.VITE_SOROBAN_RPC_URL ||
     (NETWORK === 'mainnet'
       ? 'https://soroban-rpc.mainnet.stellar.gateway.fm'
-      : 'https://soroban-testnet.stellar.org'),
+      : 'https://stellar-soroban-testnet-public.nodies.app'),
 
   // Transaction settings
   baseFee: StellarSdk.BASE_FEE,

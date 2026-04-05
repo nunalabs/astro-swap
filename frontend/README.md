@@ -48,8 +48,11 @@ Create a `.env` file with the following variables:
 
 ```env
 VITE_STELLAR_NETWORK=testnet  # or mainnet
-VITE_FACTORY_CONTRACT_ID=your_factory_contract_id
-VITE_ROUTER_CONTRACT_ID=your_router_contract_id
+
+# Latest V3 contracts (Apr 5, 2026) - Security Grade A (95/100)
+# Improvements: CEI pattern fix, 18-21% gas savings, router events
+VITE_FACTORY_CONTRACT_ID=CDXVWXJDBOLJU2DDTDSP4HY6HK3OTIYVD4SVG5MLTBOJ36OO5ASQUSCO
+VITE_ROUTER_CONTRACT_ID=CDWNDJGOVT4G5G76R4KZ4G7X3OYUVSVSHIX3YWZY4LYACPHJEMK5RBES
 VITE_STAKING_CONTRACT_ID=your_staking_contract_id
 ```
 

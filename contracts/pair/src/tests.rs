@@ -93,7 +93,7 @@ fn test_constructor_success() {
 }
 
 #[test]
-#[should_panic(expected = "same token")]
+#[should_panic(expected = "Error(Contract, #101)")]
 fn test_constructor_with_same_token_fails() {
     let env = Env::default();
     env.mock_all_auths();
@@ -101,7 +101,7 @@ fn test_constructor_with_same_token_fails() {
     let factory = Address::generate(&env);
     let token = Address::generate(&env);
 
-    // Constructor should panic with "same token"
+    // Constructor should panic with SameToken error (#101)
     let _addr = env.register(AstroSwapPair, (factory, token.clone(), token));
 }
 

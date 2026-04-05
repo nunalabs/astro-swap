@@ -25,6 +25,15 @@ export default defineConfig({
   server: {
     port: parseInt(process.env.VITE_PORT || '3001'),
     open: true,
+    // Proxy configuration for CORS bypass (backup if direct RPC fails)
+    proxy: {
+      '/soroban-rpc': {
+        target: 'https://soroban-rpc.testnet.stellar.gateway.fm',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/soroban-rpc/, ''),
+        secure: true,
+      },
+    },
   },
   build: {
     outDir: 'dist',

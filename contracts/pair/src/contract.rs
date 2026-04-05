@@ -383,10 +383,18 @@ impl AstroSwapPair {
         // This ensures fee calculation uses correct total_supply
         Self::mint_protocol_fee(&env, new_reserve_0, new_reserve_1)?;
 
+        // EFFECTS: Update state before external interactions (CEI pattern)
         // Burn LP tokens
         lp_token::burn(&env, &user, shares)?;
 
-        // Transfer tokens to user
+        // Update reserves (with underflow protection)
+        set_reserves(&env, new_reserve_0, new_reserve_1);
+
+        // Update k_last (with overflow protection)
+        let k = calculate_k(new_reserve_0, new_reserve_1)?;
+        set_k_last(&env, k);
+
+        // INTERACTIONS: External token transfers (after state changes)
         let token_0 = get_token_0(&env)?;
         let token_1 = get_token_1(&env)?;
 
@@ -395,13 +403,6 @@ impl AstroSwapPair {
 
         token_0_client.transfer(&env.current_contract_address(), &user, &amount_0);
         token_1_client.transfer(&env.current_contract_address(), &user, &amount_1);
-
-        // Update reserves (with underflow protection)
-        set_reserves(&env, new_reserve_0, new_reserve_1);
-
-        // Update k_last (with overflow protection)
-        let k = calculate_k(new_reserve_0, new_reserve_1)?;
-        set_k_last(&env, k);
 
         // Emit event
         emit_withdraw(
@@ -458,13 +459,9 @@ impl AstroSwapPair {
 
         user.require_auth();
 
-        // Validate amount (must be positive and meet minimum trade amount)
-        if amount_in <= 0 {
-            return Err(AstroSwapError::InvalidAmount);
-        }
-
+        // Validate amount (minimum trade amount check covers positive check)
+        // GAS OPTIMIZATION: Single check instead of two (MIN_TRADE_AMOUNT > 0)
         // Minimum trade amount to prevent dust attacks (0.1 XLM = 1_000_000 stroops)
-        // Uses shared constant from astroswap_shared for consistency
         if amount_in < MIN_TRADE_AMOUNT {
             return Err(AstroSwapError::AmountBelowMinimum);
         }
@@ -823,6 +820,8 @@ impl AstroSwapPair {
         amount_in: i128,
         token_in: Address,
     ) -> Result<i128, AstroSwapError> {
+        extend_instance_ttl(&env);
+
         let token_0 = get_token_0(&env)?;
         let token_1 = get_token_1(&env)?;
         let (reserve_0, reserve_1) = get_reserves(&env);
@@ -845,6 +844,8 @@ impl AstroSwapPair {
         amount_out: i128,
         token_out: Address,
     ) -> Result<i128, AstroSwapError> {
+        extend_instance_ttl(&env);
+
         let token_0 = get_token_0(&env)?;
         let token_1 = get_token_1(&env)?;
         let (reserve_0, reserve_1) = get_reserves(&env);
@@ -981,7 +982,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "same token")]
+    #[should_panic(expected = "Error(Contract, #101)")]
     fn test_constructor_same_token_panics() {
         let env = Env::default();
         env.mock_all_auths();
@@ -989,7 +990,7 @@ mod tests {
         let factory = Address::generate(&env);
         let token = Address::generate(&env);
 
-        // Constructor should panic with "same token" when both tokens are the same
+        // Constructor should panic with SameToken error (#101) when both tokens are the same
         let _pair_addr = env.register(
             AstroSwapPair,
             (factory.clone(), token.clone(), token.clone()),

@@ -11,15 +11,15 @@ import { Keypair, Networks, TransactionBuilder, Operation, Asset, Horizon, BASE_
 
 const server = new Horizon.Server('https://horizon-testnet.stellar.org');
 
-// User account
-const userSecret = 'SCNYRRCYBGTVB2MP3DGYWFUUQNUCDLYKSFNNFBS5GCG6YNMCW2ECUN6F';
-const userKeypair = Keypair.fromSecret(userSecret);
-const userPublic = userKeypair.publicKey();
+// Deployer account
+const deployerSecret = 'SCXQ2BF6AAKCO3BBVMGRCGLCPKFC7EXDW4NF6GKYJRR2QPT4NDFFUZFD';
+const deployerKeypair = Keypair.fromSecret(deployerSecret);
+const deployerPublic = deployerKeypair.publicKey();
 
 console.log('='.repeat(50));
-console.log('Creating ASTRO Token');
+console.log('Creating Test Tokens');
 console.log('='.repeat(50));
-console.log('User:', userPublic);
+console.log('Deployer:', deployerPublic);
 
 // Step 1: Create issuer account
 console.log('\n1. Creating issuer account...');
@@ -36,18 +36,41 @@ console.log('   ✅ Issuer funded');
 
 await new Promise(r => setTimeout(r, 3000));
 
-// Create asset
-const asset = new Asset('ASTRO', issuerPublic);
+// Create multiple test tokens
+const tokens = [
+  { code: 'USDC', amount: '1000000' },
+  { code: 'USDT', amount: '1000000' },
+];
 
-// Step 2: User creates trustline for ASTRO
-console.log('\n2. User creating trustline for ASTRO...');
-const userAccount = await server.loadAccount(userPublic);
-const trustTx = new TransactionBuilder(userAccount, {
-  fee: BASE_FEE,
-  networkPassphrase: Networks.TESTNET,
-})
-  .addOperation(Operation.changeTrust({
-    asset: asset,
+for (const token of tokens) {
+  console.log(`\n${'='.repeat(50)}`);
+  console.log(`Creating ${token.code} Token`);
+  console.log('='.repeat(50));
+
+  const tokenIssuerKeypair = Keypair.random();
+  const tokenIssuerPublic = tokenIssuerKeypair.publicKey();
+
+  console.log(`${token.code} Issuer:`, tokenIssuerPublic);
+
+  // Fund issuer
+  const tokenFundResponse = await fetch(`https://friendbot.stellar.org/?addr=${tokenIssuerPublic}`);
+  await tokenFundResponse.json();
+  console.log(`✅ ${token.code} Issuer funded`);
+
+  await new Promise(r => setTimeout(r, 3000));
+
+  // Create asset
+  const asset = new Asset(token.code, tokenIssuerPublic);
+
+  // Step 2: Deployer creates trustline
+  console.log(`\n2. Creating trustline for ${token.code}...`);
+  const deployerAccount = await server.loadAccount(deployerPublic);
+  const trustTx = new TransactionBuilder(deployerAccount, {
+    fee: BASE_FEE,
+    networkPassphrase: Networks.TESTNET,
+  })
+    .addOperation(Operation.changeTrust({
+      asset: asset,
     limit: '100000000', // 100 million
   }))
   .setTimeout(180)

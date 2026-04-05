@@ -638,24 +638,29 @@
                       "key": {
                         "vec": [
                           {
-                            "symbol": "Reserve0"
+                            "symbol": "Reserves"
                           }
                         ]
                       },
                       "val": {
-                        "i128": "40040040049"
-                      }
-                    },
-                    {
-                      "key": {
-                        "vec": [
+                        "map": [
                           {
-                            "symbol": "Reserve1"
+                            "key": {
+                              "symbol": "reserve_0"
+                            },
+                            "val": {
+                              "i128": "40040040049"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "reserve_1"
+                            },
+                            "val": {
+                              "i128": "2506265665"
+                            }
                           }
                         ]
-                      },
-                      "val": {
-                        "i128": "2506265665"
                       }
                     },
                     {

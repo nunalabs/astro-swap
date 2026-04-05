@@ -1,8 +1,9 @@
 #![allow(clippy::too_many_arguments)]
 
 use astroswap_shared::{
-    get_amount_in, get_amount_out, reentrancy::ReentrancyGuard, AstroSwapError, FactoryClient,
-    PairClient, MIN_TRADE_AMOUNT,
+    emit_router_add_liquidity, emit_router_remove_liquidity, emit_router_swap, get_amount_in,
+    get_amount_out, reentrancy::ReentrancyGuard, AstroSwapError, FactoryClient, PairClient,
+    MIN_TRADE_AMOUNT,
 };
 use soroban_sdk::{contract, contractimpl, token, Address, Env, Vec};
 
@@ -119,6 +120,21 @@ impl AstroSwapRouter {
         // Execute swaps along the path
         Self::execute_swaps(&env, &factory, &path, &amounts, &user, deadline)?;
 
+        // Emit router-level event
+        let token_in_final = path.get(0).ok_or(AstroSwapError::InvalidPath)?;
+        let token_out_final = path.get(path.len() - 1).ok_or(AstroSwapError::InvalidPath)?;
+        let amount_out_final = amounts.get(amounts.len() - 1).ok_or(AstroSwapError::InvalidPath)?;
+
+        emit_router_swap(
+            &env,
+            &user,
+            &token_in_final,
+            &token_out_final,
+            amount_in,
+            amount_out_final,
+            path.len(),
+        );
+
         extend_instance_ttl(&env);
 
         Ok(amounts)
@@ -185,6 +201,20 @@ impl AstroSwapRouter {
 
         // Execute swaps along the path
         Self::execute_swaps(&env, &factory, &path, &amounts, &user, deadline)?;
+
+        // Emit router-level event
+        let token_in_final = path.get(0).ok_or(AstroSwapError::InvalidPath)?;
+        let token_out_final = path.get(path.len() - 1).ok_or(AstroSwapError::InvalidPath)?;
+
+        emit_router_swap(
+            &env,
+            &user,
+            &token_in_final,
+            &token_out_final,
+            required_amount,
+            amount_out,
+            path.len(),
+        );
 
         extend_instance_ttl(&env);
 
@@ -255,6 +285,17 @@ impl AstroSwapRouter {
             deadline,
         );
 
+        // Emit router-level event
+        emit_router_add_liquidity(
+            &env,
+            &user,
+            &token_a,
+            &token_b,
+            if token_a == token_0 { result.0 } else { result.1 },
+            if token_a == token_0 { result.1 } else { result.0 },
+            result.2,
+        );
+
         extend_instance_ttl(&env);
 
         // Reorder result to match input token order
@@ -306,6 +347,17 @@ impl AstroSwapRouter {
 
         // Call withdraw with deadline protection
         let result = pair_client.withdraw(&user, liquidity, min_0, min_1, deadline);
+
+        // Emit router-level event
+        emit_router_remove_liquidity(
+            &env,
+            &user,
+            &token_a,
+            &token_b,
+            liquidity,
+            if token_a == token_0 { result.0 } else { result.1 },
+            if token_a == token_0 { result.1 } else { result.0 },
+        );
 
         extend_instance_ttl(&env);
 

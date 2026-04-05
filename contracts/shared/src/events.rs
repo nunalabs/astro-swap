@@ -84,6 +84,42 @@ pub struct Graduation {
     pub timestamp: u64,
 }
 
+/// RouterSwap event - emitted for multi-hop swaps through router
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RouterSwap {
+    pub user: Address,
+    pub token_in: Address,
+    pub token_out: Address,
+    pub amount_in: i128,
+    pub amount_out: i128,
+    pub path_length: u32,
+}
+
+/// RouterAddLiquidity event - emitted when liquidity is added through router
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RouterAddLiquidity {
+    pub user: Address,
+    pub token_a: Address,
+    pub token_b: Address,
+    pub amount_a: i128,
+    pub amount_b: i128,
+    pub liquidity: i128,
+}
+
+/// RouterRemoveLiquidity event - emitted when liquidity is removed through router
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RouterRemoveLiquidity {
+    pub user: Address,
+    pub token_a: Address,
+    pub token_b: Address,
+    pub liquidity: i128,
+    pub amount_a: i128,
+    pub amount_b: i128,
+}
+
 /// Emit a swap event
 pub fn emit_swap(
     env: &Env,
@@ -196,6 +232,69 @@ pub fn emit_graduation(env: &Env, token: &Address, pair: &Address, initial_price
         pair: pair.clone(),
         initial_price,
         timestamp,
+    }
+    .publish(env);
+}
+
+/// Emit a router swap event (multi-hop)
+pub fn emit_router_swap(
+    env: &Env,
+    user: &Address,
+    token_in: &Address,
+    token_out: &Address,
+    amount_in: i128,
+    amount_out: i128,
+    path_length: u32,
+) {
+    RouterSwap {
+        user: user.clone(),
+        token_in: token_in.clone(),
+        token_out: token_out.clone(),
+        amount_in,
+        amount_out,
+        path_length,
+    }
+    .publish(env);
+}
+
+/// Emit a router add liquidity event
+pub fn emit_router_add_liquidity(
+    env: &Env,
+    user: &Address,
+    token_a: &Address,
+    token_b: &Address,
+    amount_a: i128,
+    amount_b: i128,
+    liquidity: i128,
+) {
+    RouterAddLiquidity {
+        user: user.clone(),
+        token_a: token_a.clone(),
+        token_b: token_b.clone(),
+        amount_a,
+        amount_b,
+        liquidity,
+    }
+    .publish(env);
+}
+
+/// Emit a router remove liquidity event
+pub fn emit_router_remove_liquidity(
+    env: &Env,
+    user: &Address,
+    token_a: &Address,
+    token_b: &Address,
+    liquidity: i128,
+    amount_a: i128,
+    amount_b: i128,
+) {
+    RouterRemoveLiquidity {
+        user: user.clone(),
+        token_a: token_a.clone(),
+        token_b: token_b.clone(),
+        liquidity,
+        amount_a,
+        amount_b,
     }
     .publish(env);
 }
