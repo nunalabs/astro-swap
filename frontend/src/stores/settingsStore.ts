@@ -37,9 +37,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       if (validatedSettings.slippageTolerance !== undefined) {
         const slippage = validatedSettings.slippageTolerance;
         if (slippage < MIN_SLIPPAGE || slippage > MAX_SLIPPAGE) {
-          console.warn(
-            `Invalid slippage ${slippage}%, must be between ${MIN_SLIPPAGE} and ${MAX_SLIPPAGE}. Using default.`
-          );
           validatedSettings.slippageTolerance = DEFAULT_SETTINGS.slippageTolerance;
         }
       }
@@ -48,9 +45,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       if (validatedSettings.deadline !== undefined) {
         const deadline = validatedSettings.deadline;
         if (deadline < MIN_DEADLINE || deadline > MAX_DEADLINE) {
-          console.warn(
-            `Invalid deadline ${deadline}min, must be between ${MIN_DEADLINE} and ${MAX_DEADLINE}. Using default.`
-          );
           validatedSettings.deadline = DEFAULT_SETTINGS.deadline;
         }
       }
@@ -116,7 +110,6 @@ if (typeof window !== 'undefined') {
         (validatedSettings.slippageTolerance < MIN_SLIPPAGE ||
           validatedSettings.slippageTolerance > MAX_SLIPPAGE)
       ) {
-        console.warn('Invalid stored slippage, using default');
         validatedSettings.slippageTolerance = DEFAULT_SETTINGS.slippageTolerance;
       }
 
@@ -125,15 +118,12 @@ if (typeof window !== 'undefined') {
         validatedSettings.deadline !== undefined &&
         (validatedSettings.deadline < MIN_DEADLINE || validatedSettings.deadline > MAX_DEADLINE)
       ) {
-        console.warn('Invalid stored deadline, using default');
         validatedSettings.deadline = DEFAULT_SETTINGS.deadline;
       }
 
       useSettingsStore.setState(validatedSettings);
-    } catch (error) {
+    } catch {
       // M-6: Full recovery from corrupted localStorage
-      console.error('Error loading settings:', error);
-      console.warn('Resetting to default settings due to corrupted data');
 
       // Clear corrupted entry
       localStorage.removeItem('astroswap_settings');

@@ -96,8 +96,7 @@ export const AddTokenModal = memo(function AddTokenModal({ isOpen, onClose }: Ad
         name,
         decimals,
       });
-    } catch (err) {
-      console.error('Error fetching token info:', err);
+    } catch {
       setError('Failed to fetch token info. Make sure the contract is a valid Soroban token.');
     } finally {
       setIsLoading(false);

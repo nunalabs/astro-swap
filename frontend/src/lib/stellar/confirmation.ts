@@ -5,7 +5,7 @@
  * Handles RPC instability by providing fallbacks.
  */
 
-import { NETWORK_CONFIG, horizonServer, sorobanServer, getStellarExpertTxUrl } from './config';
+import { NETWORK_CONFIG, horizonServer, sorobanServer } from './config';
 import { StellarTransactionError, isHttpError } from './errors';
 import { rpcLimiter } from '../rate-limiter';
 
@@ -25,11 +25,8 @@ export async function confirmViaHorizon(
   txHash: string,
   timeoutSeconds: number = NETWORK_CONFIG.confirmationTimeout
 ): Promise<ConfirmationResult> {
-  console.log('📡 Confirming transaction via Horizon API...');
-
   const startTime = Date.now();
   const maxTime = startTime + (timeoutSeconds * 1000);
-  let attempts = 0;
 
   while (Date.now() < maxTime) {
     try {
@@ -39,7 +36,6 @@ export async function confirmViaHorizon(
         .call();
 
       const ledgerNum = typeof tx.ledger === 'function' ? undefined : Number(tx.ledger);
-      console.log(`✅ Transaction confirmed via Horizon (ledger ${ledgerNum})`);
 
       return {
         status: tx.successful ? 'SUCCESS' : 'FAILED',
@@ -49,13 +45,6 @@ export async function confirmViaHorizon(
     } catch (error: unknown) {
       // 404 means transaction not found yet (still pending)
       if (isHttpError(error) && error.response?.status === 404) {
-        attempts++;
-
-        if (attempts % 10 === 0) {
-          const elapsed = Math.floor((Date.now() - startTime) / 1000);
-          console.log(`⏳ Still waiting for confirmation... (${elapsed}/${timeoutSeconds}s)`);
-        }
-
         // Wait before next attempt
         await new Promise(resolve => setTimeout(resolve, NETWORK_CONFIG.confirmationPollInterval));
         continue;
@@ -72,9 +61,6 @@ export async function confirmViaHorizon(
   }
 
   // Timeout reached
-  console.warn('⚠️ Transaction confirmation timeout');
-  console.log(`📋 Check status: ${getStellarExpertTxUrl(txHash)}`);
-
   return {
     status: 'NOT_FOUND',
     hash: txHash,
@@ -89,11 +75,7 @@ export async function confirmViaRPC(
   txHash: string,
   timeoutSeconds: number = NETWORK_CONFIG.confirmationTimeout
 ): Promise<ConfirmationResult> {
-  console.log('📡 Confirming transaction via Soroban RPC...');
-
-  const startTime = Date.now();
-  const maxTime = startTime + (timeoutSeconds * 1000);
-  let attempts = 0;
+  const maxTime = Date.now() + (timeoutSeconds * 1000);
 
   while (Date.now() < maxTime) {
     try {
@@ -102,7 +84,6 @@ export async function confirmViaRPC(
       );
 
       if (status.status === 'SUCCESS') {
-        console.log('✅ Transaction confirmed via RPC');
         return { status: 'SUCCESS', hash: txHash };
       }
 
@@ -115,25 +96,12 @@ export async function confirmViaRPC(
       }
 
       // NOT_FOUND - keep polling
-      attempts++;
-
-      if (attempts % 10 === 0) {
-        const elapsed = Math.floor((Date.now() - startTime) / 1000);
-        console.log(`⏳ Still waiting for confirmation... (${elapsed}/${timeoutSeconds}s)`);
-      }
-
       await new Promise(resolve => setTimeout(resolve, NETWORK_CONFIG.confirmationPollInterval));
 
     } catch (error: unknown) {
       // XDR parsing errors - known RPC issue, keep trying
       const errorMessage = error instanceof Error ? error.message : '';
       if (errorMessage.includes('union switch') || errorMessage.includes('XDR')) {
-        attempts++;
-
-        if (attempts % 20 === 0) {
-          console.warn(`⚠️ Persistent XDR errors (${attempts} attempts)`);
-        }
-
         await new Promise(resolve => setTimeout(resolve, NETWORK_CONFIG.confirmationPollInterval));
         continue;
       }
@@ -144,9 +112,6 @@ export async function confirmViaRPC(
   }
 
   // Timeout reached
-  console.warn('⚠️ Transaction confirmation timeout via RPC');
-  console.log(`📋 Check status: ${getStellarExpertTxUrl(txHash)}`);
-
   return {
     status: 'NOT_FOUND',
     hash: txHash,
@@ -158,9 +123,6 @@ export async function confirmViaRPC(
  * Skip confirmation and return immediately (for unstable networks)
  */
 export async function skipConfirmation(txHash: string): Promise<ConfirmationResult> {
-  console.log('⏭️ Skipping confirmation - returning immediately');
-  console.log(`📋 Check status: ${getStellarExpertTxUrl(txHash)}`);
-
   return {
     status: 'PENDING',
     hash: txHash,
@@ -173,8 +135,6 @@ export async function skipConfirmation(txHash: string): Promise<ConfirmationResu
  */
 export async function confirmTransaction(txHash: string): Promise<ConfirmationResult> {
   const strategy = NETWORK_CONFIG.confirmationStrategy;
-
-  console.log(`🔍 Using confirmation strategy: ${strategy}`);
 
   switch (strategy) {
     case 'horizon':

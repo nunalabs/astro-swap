@@ -94,7 +94,6 @@ export function useSwap(tokenIn: Token | null, tokenOut: Token | null) {
   const swap = useCallback(async () => {
     // Atomic guard against concurrent submissions
     if (isSubmittingRef.current) {
-      console.warn('Swap already in progress');
       return;
     }
 

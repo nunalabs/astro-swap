@@ -44,7 +44,6 @@ export class CircuitBreaker {
 
       // Transition to half-open (test recovery)
       this.state = CircuitState.HALF_OPEN;
-      console.log(`🟡 Circuit breaker [${this.name}] entering HALF_OPEN state`);
     }
 
     try {
@@ -74,7 +73,6 @@ export class CircuitBreaker {
         this.state = CircuitState.CLOSED;
         this.successCount = 0;
         this.recentFailures = [];
-        console.log(`✅ Circuit breaker [${this.name}] closed (service recovered)`);
       }
     }
   }
@@ -110,11 +108,6 @@ export class CircuitBreaker {
     this.state = CircuitState.OPEN;
     this.nextAttemptTime = Date.now() + this.options.timeout;
     this.successCount = 0;
-
-    console.error(
-      `❌ Circuit breaker [${this.name}] opened after ${this.recentFailures.length} failures. ` +
-      `Will retry in ${(this.options.timeout / 1000).toFixed(0)}s`
-    );
   }
 
   /**
@@ -162,7 +155,6 @@ export class CircuitBreaker {
     this.failureCount = 0;
     this.successCount = 0;
     this.recentFailures = [];
-    console.log(`🔄 Circuit breaker [${this.name}] manually reset`);
   }
 }
 

@@ -22,26 +22,17 @@ export async function getReserves(
       sourceAddress
     );
 
-    console.log('🔍 getReserves raw result:', {
-      result,
-      isArray: Array.isArray(result),
-      length: Array.isArray(result) ? result.length : 'N/A',
-    });
-
     if (Array.isArray(result) && result.length === 2) {
       const reserves = {
         reserve0: result[0]?.toString() || '0',
         reserve1: result[1]?.toString() || '0',
         timestamp: Date.now(),
       };
-      console.log('✅ Parsed reserves:', reserves);
       return reserves;
     }
 
-    console.warn('❌ Unexpected reserves format:', result);
     return null;
   } catch (error) {
-    console.error('❌ Error getting reserves:', error);
     return null;
   }
 }
@@ -62,7 +53,6 @@ export async function getTotalSupply(
     );
     return String(result);
   } catch (error) {
-    console.error('Error getting total supply:', error);
     return '0';
   }
 }
@@ -78,12 +68,6 @@ export async function getReservesForPair(
   sourceAddress: string
 ): Promise<ReservesForPairResult | null> {
   try {
-    console.log('🔍 getReservesForPair called:', {
-      pairAddress: pairAddress.slice(0, 8) + '...',
-      tokenA: tokenA.slice(0, 8) + '...',
-      tokenB: tokenB.slice(0, 8) + '...',
-    });
-
     const [reserves, token0, token1] = await Promise.all([
       getReserves(pairAddress, sourceAddress),
       callContract(pairAddress, 'token_0', [], sourceAddress) as Promise<string>,
@@ -91,17 +75,8 @@ export async function getReservesForPair(
     ]);
 
     if (!reserves) {
-      console.error('❌ Failed to fetch reserves');
       return null;
     }
-
-    console.log('📊 Contract data:', {
-      pairAddress: pairAddress.slice(0, 8) + '...',
-      token0: token0.slice(0, 8) + '...',
-      token1: token1.slice(0, 8) + '...',
-      reserve0: reserves.reserve0,
-      reserve1: reserves.reserve1,
-    });
 
     let reserveA: string;
     let reserveB: string;
@@ -109,13 +84,10 @@ export async function getReservesForPair(
     if (tokenA === token0 && tokenB === token1) {
       reserveA = reserves.reserve0;
       reserveB = reserves.reserve1;
-      console.log('✅ tokenA=token0, tokenB=token1');
     } else if (tokenA === token1 && tokenB === token0) {
       reserveA = reserves.reserve1;
       reserveB = reserves.reserve0;
-      console.log('✅ tokenA=token1, tokenB=token0');
     } else {
-      console.error('❌ Token mismatch!', { tokenA, tokenB, token0, token1 });
       return null;
     }
 
@@ -127,7 +99,6 @@ export async function getReservesForPair(
       timestamp: reserves.timestamp,
     };
   } catch (error) {
-    console.error('❌ Error in getReservesForPair:', error);
     return null;
   }
 }

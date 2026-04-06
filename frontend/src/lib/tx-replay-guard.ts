@@ -91,11 +91,6 @@ export function isReplayTransaction(
     const timeSinceLastSubmission = now - lastSubmission;
 
     if (timeSinceLastSubmission < REPLAY_WINDOW_MS) {
-      console.warn('🚫 Replay transaction detected:', {
-        action,
-        user: `${user.slice(0, 8)}...`,
-        timeSinceLastSubmission: `${Math.floor(timeSinceLastSubmission / 1000)}s`,
-      });
       return true; // This is a replay
     }
   }

@@ -118,9 +118,8 @@ export function useDebouncedSearch<T = unknown>(
         if (!abortController.signal.aborted) {
           setResults(searchResults);
         }
-      } catch (error) {
+      } catch {
         if (!abortController.signal.aborted) {
-          console.error('Search error:', error);
           setResults([]);
         }
       } finally {

@@ -138,18 +138,7 @@ export async function withRetry<T>(
 
   for (let attempt = 0; attempt < opts.maxAttempts; attempt++) {
     try {
-      // Log retry attempts (except first)
-      if (attempt > 0) {
-        console.log(`🔄 Retry attempt ${attempt + 1}/${opts.maxAttempts}`);
-      }
-
       const result = await operation();
-
-      // Success - log if it was a retry
-      if (attempt > 0) {
-        console.log(`✅ Operation succeeded after ${attempt + 1} attempts`);
-      }
-
       return result;
 
     } catch (error: unknown) {
@@ -157,14 +146,11 @@ export async function withRetry<T>(
 
       // Check if error is retryable
       if (!isRetryableError(error)) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`❌ Non-retryable error: ${errorMessage}`);
         throw error;
       }
 
       // Last attempt - don't wait, just throw
       if (attempt === opts.maxAttempts - 1) {
-        console.error(`❌ Max retries (${opts.maxAttempts}) exceeded`);
         const errMsg = error instanceof Error ? error.message : String(error);
         const errObj = error instanceof Error ? error : new Error(errMsg);
         throw new MaxRetriesExceededError(
@@ -176,11 +162,6 @@ export async function withRetry<T>(
 
       // Calculate delay for next attempt
       const delay = calculateDelay(attempt, opts);
-      const retryErrMsg = error instanceof Error ? error.message : String(error);
-      console.warn(
-        `⚠️ Retryable error (attempt ${attempt + 1}/${opts.maxAttempts}): ${retryErrMsg}`
-      );
-      console.log(`⏳ Waiting ${(delay / 1000).toFixed(1)}s before retry...`);
 
       // Wait before next attempt
       await new Promise(resolve => setTimeout(resolve, delay));

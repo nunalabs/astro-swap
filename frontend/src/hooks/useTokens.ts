@@ -29,8 +29,7 @@ export function useTokens() {
 
         try {
           return await getTokenBalance(address, token.address);
-        } catch (error) {
-          console.error(`Error fetching balance for ${token.symbol}:`, error);
+        } catch {
           return '0';
         }
       },

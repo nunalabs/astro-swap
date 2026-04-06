@@ -94,17 +94,14 @@ async function fetchTokenMetadataInternal(tokenAddress: string): Promise<Token |
 
     // Validate all results
     if (!StellarSdk.rpc.Api.isSimulationSuccess(symbolResult)) {
-      console.error(`Failed to fetch symbol for ${tokenAddress}`);
       return null;
     }
 
     if (!StellarSdk.rpc.Api.isSimulationSuccess(nameResult)) {
-      console.error(`Failed to fetch name for ${tokenAddress}`);
       return null;
     }
 
     if (!StellarSdk.rpc.Api.isSimulationSuccess(decimalsResult)) {
-      console.error(`Failed to fetch decimals for ${tokenAddress}`);
       return null;
     }
 
@@ -124,8 +121,7 @@ async function fetchTokenMetadataInternal(tokenAddress: string): Promise<Token |
     tokenMetadataCache.set(tokenAddress, token);
 
     return token;
-  } catch (error) {
-    console.error(`Error fetching token metadata for ${tokenAddress}:`, error);
+  } catch {
     return null;
   }
 }
@@ -203,12 +199,10 @@ export async function getPairTokens(
     ]);
 
     if (!StellarSdk.rpc.Api.isSimulationSuccess(token0Result)) {
-      console.error(`Failed to fetch token0 for pair ${pairAddress}`);
       return null;
     }
 
     if (!StellarSdk.rpc.Api.isSimulationSuccess(token1Result)) {
-      console.error(`Failed to fetch token1 for pair ${pairAddress}`);
       return null;
     }
 
@@ -216,8 +210,7 @@ export async function getPairTokens(
     const token1 = StellarSdk.scValToNative(token1Result.result!.retval) as string;
 
     return { token0, token1 };
-  } catch (error) {
-    console.error(`Error fetching pair tokens for ${pairAddress}:`, error);
+  } catch {
     return null;
   }
 }
@@ -232,7 +225,6 @@ export async function indexTokensFromFactory(sourceAddress: string): Promise<Tok
     const pairs = await getAllPairs(sourceAddress);
 
     if (!pairs || pairs.length === 0) {
-      console.log('No pairs found in factory');
       return [];
     }
 
@@ -259,8 +251,7 @@ export async function indexTokensFromFactory(sourceAddress: string): Promise<Tok
     const metadataMap = await fetchTokenMetadataBatch(tokenAddressArray);
 
     return Array.from(metadataMap.values());
-  } catch (error) {
-    console.error('Error indexing tokens from factory:', error);
+  } catch {
     return [];
   }
 }

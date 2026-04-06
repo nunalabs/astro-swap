@@ -1,13 +1,8 @@
 /**
  * Token Store (Legacy Compatibility Wrapper)
  *
- * This file maintains backward compatibility with existing code
- * while internally using the refactored stores and hooks.
- *
- * New code should use:
- * - useTokenListStore for core token operations
- * - useTokenDiscovery hook for discovery operations
- * - useTokenSearch hook for search operations
+ * Maintains backward compatibility with existing code
+ * while internally using useTokenListStore.
  */
 
 import { create } from 'zustand';
@@ -150,8 +145,7 @@ export const useTokenStore = create<TokenState>((set, get) => ({
 
       set({ isSearching: false });
       return results;
-    } catch (error) {
-      console.error('Error in async token search:', error);
+    } catch {
       set({ isSearching: false });
       return get().searchTokens(query);
     }
@@ -172,22 +166,15 @@ export const useTokenStore = create<TokenState>((set, get) => ({
 
     // Rate limit
     if (isLoading) return;
-    if (lastDiscoveryTime && Date.now() - lastDiscoveryTime < 120000) {
-      console.log('Token discovery skipped - rate limited');
-      return;
-    }
+    if (lastDiscoveryTime && Date.now() - lastDiscoveryTime < 120000) return;
 
     set({ isLoading: true });
 
     try {
-      console.log('Starting comprehensive token discovery...');
-
       const [whitelistTokens, expertTokens] = await Promise.all([
         Promise.resolve(getWhitelistTokens()),
         fetchStellarExpertTokens({ limit: 50 }),
       ]);
-
-      console.log(`Discovered: ${whitelistTokens.length} whitelist, ${expertTokens.length} expert tokens`);
 
       const { customTokens, indexedTokens } = get();
 
@@ -206,8 +193,7 @@ export const useTokenStore = create<TokenState>((set, get) => ({
         isLoading: false,
         lastDiscoveryTime: Date.now(),
       });
-    } catch (error) {
-      console.error('Error discovering tokens:', error);
+    } catch {
       set({ isLoading: false });
     }
   },
@@ -225,8 +211,7 @@ export const useTokenStore = create<TokenState>((set, get) => ({
         tokens: allTokens,
         isLoading: false
       });
-    } catch (error) {
-      console.error('Error loading tokens:', error);
+    } catch {
       set({ isLoading: false });
     }
   },
@@ -236,20 +221,12 @@ export const useTokenStore = create<TokenState>((set, get) => ({
 
     // Rate limit
     if (isIndexing) return;
-    if (lastIndexTime && Date.now() - lastIndexTime < 60000) {
-      console.log('Token indexing skipped - rate limited');
-      return;
-    }
+    if (lastIndexTime && Date.now() - lastIndexTime < 60000) return;
 
     set({ isIndexing: true });
 
     try {
-      console.log('Starting token indexing from factory...');
-
       const discoveredTokens = await indexTokensFromFactory(walletAddress);
-
-      console.log(`Discovered ${discoveredTokens.length} tokens from factory`);
-
       const { customTokens } = get();
       const allTokens = mergeTokenLists(BASE_TOKENS, discoveredTokens, customTokens);
 
@@ -261,8 +238,7 @@ export const useTokenStore = create<TokenState>((set, get) => ({
         isIndexing: false,
         lastIndexTime: Date.now(),
       });
-    } catch (error) {
-      console.error('Error indexing tokens:', error);
+    } catch {
       set({ isIndexing: false });
     }
   },
@@ -282,8 +258,7 @@ export const useTokenStore = create<TokenState>((set, get) => ({
       }
 
       return null;
-    } catch (error) {
-      console.error('Error fetching token:', error);
+    } catch {
       return null;
     }
   },

@@ -39,12 +39,8 @@ export function useStaking(poolId?: string) {
         throw new Error('Duplicate transaction detected. Please wait before retrying.');
       }
 
-      console.log('🔓 Approving LP token for staking...', { lpTokenAddress, amount, rawAmount });
-
       // First approve LP token spending by staking contract
       await approveToken(lpTokenAddress, CONTRACTS.STAKING, rawAmount, address);
-
-      console.log('✅ LP token approved, executing stake...');
 
       return stake(poolId, rawAmount, address);
     },

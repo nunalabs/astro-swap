@@ -12,8 +12,6 @@ import { CONTRACTS } from './config';
  */
 export async function getAllPairs(sourceAddress: string): Promise<string[]> {
   try {
-    console.log('🔍 Fetching total pairs from factory:', CONTRACTS.FACTORY);
-
     const totalPairs = await callContract(
       CONTRACTS.FACTORY,
       'all_pairs_length',
@@ -21,10 +19,7 @@ export async function getAllPairs(sourceAddress: string): Promise<string[]> {
       sourceAddress
     ) as number;
 
-    console.log(`📊 Factory reports ${totalPairs} total pairs`);
-
     if (totalPairs === 0) {
-      console.log('⚠️ No pairs exist in factory yet');
       return [];
     }
 
@@ -33,7 +28,6 @@ export async function getAllPairs(sourceAddress: string): Promise<string[]> {
 
     for (let start = 0; start < totalPairs; start += batchSize) {
       const limit = Math.min(batchSize, totalPairs - start);
-      console.log(`📥 Fetching pairs batch: start=${start}, limit=${limit}`);
 
       const startScVal = StellarSdk.nativeToScVal(start, { type: 'u32' });
       const limitScVal = StellarSdk.nativeToScVal(limit, { type: 'u32' });
@@ -45,13 +39,11 @@ export async function getAllPairs(sourceAddress: string): Promise<string[]> {
         sourceAddress
       ) as string[];
 
-      console.log(`✅ Received ${batch.length} pair addresses in batch`);
       allPairs.push(...batch);
     }
 
     return allPairs;
   } catch (error) {
-    console.error('Error getting all pairs:', error);
     return [];
   }
 }
@@ -75,15 +67,8 @@ export async function getPairAddress(
       sourceAddress
     );
 
-    console.log('🏭 Factory.get_pair result:', {
-      token0: token0.substring(0, 8) + '...',
-      token1: token1.substring(0, 8) + '...',
-      pairAddress: result ? (result as string).substring(0, 8) + '...' : null,
-    });
-
     return result as string;
   } catch (error) {
-    console.error('Error getting pair address:', error);
     return null;
   }
 }

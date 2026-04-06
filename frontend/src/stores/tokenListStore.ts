@@ -72,7 +72,6 @@ export function mergeTokenLists(...lists: Token[][]): Token[] {
   for (const list of lists) {
     for (const token of list) {
       if (!isValidTokenAddress(token.address)) {
-        console.debug(`Skipping invalid token: ${token.symbol}`);
         continue;
       }
 
@@ -240,8 +239,6 @@ export const useTokenListStore = create<TokenListState>()(
           // Merge with fresh whitelist
           const whitelistTokens = getWhitelistTokens();
           state.tokens = mergeTokenLists(whitelistTokens, state.customTokens);
-
-          console.log(`Token list rehydrated: ${state.tokens.length} tokens`);
         }
       },
     }

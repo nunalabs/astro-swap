@@ -8,8 +8,8 @@ export function Dashboard() {
   const { isConnected, balance } = useWalletStore();
   const { tokens } = useTokens();
 
-  const portfolioValue = 1234.56; // Calculate from actual positions
-  const change24h = 5.67; // Calculate from actual data
+  const portfolioValue = 0;
+  const change24h = 0;
 
   return (
     <motion.div

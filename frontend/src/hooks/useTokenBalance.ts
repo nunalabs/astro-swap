@@ -27,8 +27,7 @@ export function useTokenBalance(token: Token | null) {
         // For other tokens, use the token contract balance
         const tokenBalance = await getTokenBalance(address, token.address);
         return tokenBalance;
-      } catch (error) {
-        console.error('Error fetching token balance:', error);
+      } catch {
         return '0';
       }
     },
@@ -102,8 +101,7 @@ export function useAllTokenBalances() {
           } else {
             balances[token.address] = await getTokenBalance(address, token.address);
           }
-        } catch (error) {
-          console.error(`Error fetching balance for ${token.symbol}:`, error);
+        } catch {
           balances[token.address] = '0';
         }
         return balances[token.address];

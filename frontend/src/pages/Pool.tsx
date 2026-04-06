@@ -54,10 +54,9 @@ export function Pool() {
     const reserve0 = BigInt(existingPool.reserve0);
     const reserve1 = BigInt(existingPool.reserve1);
 
-    // ✅ FIX: If pool is empty, don't auto-calculate (allow manual entry)
+    // If pool is empty, don't auto-calculate (allow manual entry)
     if (reserve0 === 0n || reserve1 === 0n) {
-      console.log('Empty pool - enter amounts manually to establish initial ratio');
-      return ''; // Return empty but DON'T block manual input
+      return ''; // Empty pool - allow manual entry to establish initial ratio
     }
 
     try {
@@ -81,8 +80,7 @@ export function Pool() {
       const fractionalPart = calculatedAmountB % divisor;
 
       return `${wholePart}.${fractionalPart.toString().padStart(decimals, '0')}`.replace(/\.?0+$/, '');
-    } catch (error) {
-      console.error('Error calculating amount B:', error);
+    } catch {
       return '';
     }
   }, [existingPool, tokenA, tokenB]);
@@ -97,10 +95,9 @@ export function Pool() {
     const reserve0 = BigInt(existingPool.reserve0);
     const reserve1 = BigInt(existingPool.reserve1);
 
-    // ✅ FIX: If pool is empty, don't auto-calculate (allow manual entry)
+    // If pool is empty, don't auto-calculate (allow manual entry)
     if (reserve0 === 0n || reserve1 === 0n) {
-      console.log('Empty pool - enter amounts manually to establish initial ratio');
-      return ''; // Return empty but DON'T block manual input
+      return ''; // Empty pool - allow manual entry to establish initial ratio
     }
 
     try {
@@ -126,8 +123,7 @@ export function Pool() {
       const fractionalPart = calculatedAmountA % divisor;
 
       return `${wholePart}.${fractionalPart.toString().padStart(decimals, '0')}`.replace(/\.?0+$/, '');
-    } catch (error) {
-      console.error('Error calculating amount A:', error);
+    } catch {
       return '';
     }
   }, [existingPool, tokenA, tokenB]);
@@ -202,8 +198,7 @@ export function Pool() {
         price: `1 ${tokenA.symbol} = ${price} ${tokenB.symbol}`,
         sharePercent: sharePercent.toFixed(4),
       };
-    } catch (error) {
-      console.error('Error calculating pool info:', error);
+    } catch {
       return null;
     }
   }, [existingPool, tokenA, tokenB, amountA, amountB]);
@@ -371,7 +366,7 @@ export function Pool() {
           {existingPool && isEmptyPool && (
             <div className="flex justify-center -my-2 relative z-10">
               <div className="px-3 py-1 bg-yellow-800 border border-yellow-700 rounded-lg text-xs text-yellow-300">
-                Ingrese ambos amounts manualmente
+                Enter both amounts manually
               </div>
             </div>
           )}

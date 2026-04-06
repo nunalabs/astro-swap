@@ -78,8 +78,8 @@ export const useWalletStore = create<WalletState>()(
         try {
           const balance = await getAccountBalance(address);
           set({ balance });
-        } catch (error) {
-          console.error('Error updating balance:', error);
+        } catch {
+          // balance update failed silently
         }
       },
 
@@ -107,7 +107,6 @@ export const useWalletStore = create<WalletState>()(
           // Validate required fields exist
           if (!state.walletId) {
             // No walletId but isConnected - invalid state
-            console.warn('Invalid wallet state: connected but no walletId');
             state.disconnect();
             return;
           }
@@ -118,9 +117,8 @@ export const useWalletStore = create<WalletState>()(
 
             // Update balance in background
             state.updateBalance();
-          } catch (error) {
+          } catch {
             // Error restoring wallet connection, clear stale state
-            console.warn('Error restoring wallet connection, clearing stale state:', error);
             state.disconnect();
           }
         }

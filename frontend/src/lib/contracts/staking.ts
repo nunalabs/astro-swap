@@ -21,7 +21,6 @@ export async function getStakingPoolCount(sourceAddress: string): Promise<number
     );
     return Number(result);
   } catch (error) {
-    console.error('Error getting staking pool count:', error);
     return 0;
   }
 }
@@ -45,7 +44,6 @@ export async function getStakingPoolInfo(
 
     return result;
   } catch (error) {
-    console.error(`Error getting staking pool info for pool ${poolId}:`, error);
     return null;
   }
 }
@@ -71,7 +69,6 @@ export async function getPendingRewards(
 
     return String(result);
   } catch (error) {
-    console.error('Error getting pending rewards:', error);
     return '0';
   }
 }
@@ -96,7 +93,6 @@ export async function stake(
 
     return await buildAndSubmitTransaction(sourceAddress, [operation]);
   } catch (error) {
-    console.error('Error staking:', error);
     throw error;
   }
 }
@@ -121,7 +117,6 @@ export async function unstake(
 
     return await buildAndSubmitTransaction(sourceAddress, [operation]);
   } catch (error) {
-    console.error('Error unstaking:', error);
     throw error;
   }
 }
@@ -144,7 +139,6 @@ export async function claimRewards(
 
     return await buildAndSubmitTransaction(sourceAddress, [operation]);
   } catch (error) {
-    console.error('Error claiming rewards:', error);
     throw error;
   }
 }
@@ -170,7 +164,6 @@ export async function getUserStakeInfo(
 
     return result as { staked: string; rewards: string };
   } catch (error) {
-    console.error('Error getting user stake info:', error);
     return null;
   }
 }

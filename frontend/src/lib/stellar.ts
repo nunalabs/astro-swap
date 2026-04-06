@@ -127,11 +127,6 @@ export async function buildAndSubmitTransaction(
     throw new Error(result.confirmation.error || 'Transaction failed');
   }
 
-  if (result.confirmation.status === 'NOT_FOUND') {
-    console.warn('⚠️ Transaction not confirmed, but may succeed later');
-    console.warn(`📋 Check status: ${result.hash}`);
-  }
-
   return result.hash;
 }
 

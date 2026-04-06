@@ -19,8 +19,7 @@ export async function getAccountBalance(address: string): Promise<string> {
     );
 
     return nativeBalance ? nativeBalance.balance : '0';
-  } catch (error) {
-    console.error('Error fetching account balance:', error);
+  } catch {
     return '0';
   }
 }
@@ -55,8 +54,7 @@ export async function getTokenBalance(
     }
 
     return '0';
-  } catch (error) {
-    console.error('Error fetching token balance:', error);
+  } catch {
     return '0';
   }
 }

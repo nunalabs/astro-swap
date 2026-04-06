@@ -124,21 +124,18 @@ export async function openWalletModal(): Promise<WalletConnection> {
       if (!selectedWallet || resolved) return;
 
       try {
-        console.log('🔄 Window focused - attempting to get wallet address...');
         const { address } = await walletKit.getAddress();
 
         if (address && !resolved) {
           resolved = true;
           cleanup();
-          console.log('✅ Wallet connected on focus:', address);
           resolve({
             address,
             walletId: selectedWallet.id,
             walletName: selectedWallet.name,
           });
         }
-      } catch (error) {
-        console.log('⏳ Wallet not ready yet, waiting for approval...');
+      } catch {
         // Silently continue - user may still be approving
       }
     };
@@ -164,7 +161,6 @@ export async function openWalletModal(): Promise<WalletConnection> {
             });
           }
         } catch (error) {
-          console.log('⏳ Wallet selected, waiting for user approval in extension...');
           // Don't reject here - the focus handler will retry when user comes back
           // Only reject if user explicitly closes the wallet approval
           if (error instanceof Error &&
@@ -239,7 +235,6 @@ export async function signTransaction(
         const walletState = JSON.parse(stored);
         if (walletState.state?.walletId && walletState.state?.isConnected) {
           walletIdToUse = walletState.state.walletId;
-          console.log(`🔄 Using wallet from store: ${walletIdToUse}`);
 
           // Set it in walletKit (may or may not work, but doesn't matter)
           if (walletIdToUse) {
@@ -247,14 +242,13 @@ export async function signTransaction(
           }
         }
       }
-    } catch (e) {
-      console.error('Failed to read wallet from storage:', e);
+    } catch {
+      // Failed to read wallet from storage
     }
   }
 
   // Check if wallet is available
   if (!walletIdToUse) {
-    console.error('❌ No wallet found in storage');
     throw new WalletError(
       'validation',
       'No wallet connected',
@@ -264,39 +258,8 @@ export async function signTransaction(
   }
 
   const address = await getWalletAddress();
-  console.log(`📍 Signing with ${walletIdToUse} wallet: ${address.substring(0, 8)}...`);
 
   const isAlbedo = walletIdToUse === ALBEDO_ID;
-
-  if (isAlbedo) {
-    console.log('📡 Albedo detected - will use callback URL for proper popup/redirect flow');
-
-    // Add debug listener for postMessage events (to diagnose callback issues)
-    const messageHandler = (event: MessageEvent) => {
-      console.log('📨 PostMessage received:', {
-        origin: event.origin,
-        type: event.data?.type,
-        source: event.data?.source,
-        hasPayload: !!event.data?.payload,
-        data: event.data
-      });
-
-      if (event.data?.type === 'ALBEDO_CALLBACK' || event.data?.source === 'albedo') {
-        console.log('✅ Albedo callback message detected!', event.data);
-      }
-    };
-
-    window.addEventListener('message', messageHandler);
-
-    // Cleanup listener after timeout
-    setTimeout(() => {
-      window.removeEventListener('message', messageHandler);
-      console.log('🧹 Removed debug message listener');
-    }, timeout);
-  }
-
-  console.log(`🔐 Requesting signature (timeout: ${timeout}ms)...`);
-  const startTime = Date.now();
 
   try {
     // Build transaction signing options
@@ -318,7 +281,6 @@ export async function signTransaction(
     // Add callback URL only for Albedo (web-based wallet)
     if (isAlbedo) {
       signingOptions.callback = getCallbackUrl();
-      console.log(`📞 Callback URL set: ${signingOptions.callback}`);
     }
 
     // Race between signing and timeout
@@ -326,9 +288,6 @@ export async function signTransaction(
       walletKit.signTransaction(xdr, signingOptions),
       timeoutPromise<{ signedTxXdr: string }>(timeout, 'Transaction signing timed out'),
     ]);
-
-    const elapsed = Date.now() - startTime;
-    console.log(`✅ Signature received from ${walletIdToUse} (took ${elapsed}ms)`);
 
     return signedTxXdr;
   } catch (error) {

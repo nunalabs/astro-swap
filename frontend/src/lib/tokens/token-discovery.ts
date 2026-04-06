@@ -102,7 +102,6 @@ export async function fetchStellarExpertTokens(options: {
     const response = await fetch(url);
 
     if (!response.ok) {
-      console.error('StellarExpert API error:', response.status);
       return [];
     }
 
@@ -136,8 +135,7 @@ export async function fetchStellarExpertTokens(options: {
     }
 
     return tokens;
-  } catch (error) {
-    console.error('Error fetching StellarExpert tokens:', error);
+  } catch {
     return [];
   }
 }
@@ -161,7 +159,6 @@ export async function searchHorizonTokens(query: string): Promise<Token[]> {
     const response = await fetch(url);
 
     if (!response.ok) {
-      console.error('Horizon API error:', response.status);
       return [];
     }
 
@@ -196,8 +193,7 @@ export async function searchHorizonTokens(query: string): Promise<Token[]> {
     searchCache.set(cacheKey, { results: tokens, timestamp: Date.now() });
 
     return tokens;
-  } catch (error) {
-    console.error('Error searching Horizon tokens:', error);
+  } catch {
     return [];
   }
 }

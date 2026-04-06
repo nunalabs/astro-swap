@@ -92,8 +92,6 @@ class RateLimiter {
         // Retry logic with exponential backoff
         if (this.shouldRetry(error) && request.retries < this.config.maxRetries) {
           const delay = this.calculateBackoff(request.retries);
-          console.warn(`RPC call failed, retrying in ${delay}ms (attempt ${request.retries + 1}/${this.config.maxRetries})`);
-
           await this.sleep(delay);
 
           // Re-queue with incremented retry count

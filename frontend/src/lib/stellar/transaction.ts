@@ -52,7 +52,6 @@ export async function buildAndSubmitTransaction(
     metrics.increment('transaction.submitted');
 
     // Step 1: Load source account (with circuit breaker and retry)
-    console.log('📥 Loading source account...');
     const sourceAccount = await withRetry(
       () => horizonCircuitBreaker.execute(() =>
         horizonServer.loadAccount(sourceAddress)
@@ -61,7 +60,6 @@ export async function buildAndSubmitTransaction(
     );
 
     // Step 2: Build transaction
-    console.log(`📦 Building transaction with ${operations.length} operation(s)...`);
     let builder = new StellarSdk.TransactionBuilder(sourceAccount, {
       fee: NETWORK_CONFIG.baseFee,
       networkPassphrase: NETWORK_CONFIG.passphrase,
@@ -74,7 +72,6 @@ export async function buildAndSubmitTransaction(
     const transaction = builder.setTimeout(NETWORK_CONFIG.timeout).build();
 
     // Step 3: Simulate transaction (with circuit breaker and retry)
-    console.log('🔍 Simulating transaction...');
     const simulated = await measureTiming(
       'transaction.simulate',
       () => withRetry(
@@ -92,25 +89,14 @@ export async function buildAndSubmitTransaction(
       throw new StellarTransactionError(errorMessage, 'SIMULATION_FAILED', simulated);
     }
 
-    console.log('✅ Simulation successful');
-    console.log(`💰 Estimated fee: ${simulated.minResourceFee} stroops`);
-
     // Step 4: Prepare transaction with proper fee
     const preparedTx = StellarSdk.rpc.assembleTransaction(
       transaction,
       simulated
     ).build();
 
-    console.log(`⛽ Final fee: ${preparedTx.fee} stroops`);
-
     // Step 5: Sign transaction
-    console.log('📝 Requesting signature from wallet...');
-    const signStartTime = Date.now();
-
     const signedXdr = await signer.signTransaction(preparedTx.toXDR());
-
-    const signElapsed = ((Date.now() - signStartTime) / 1000).toFixed(1);
-    console.log(`✅ Transaction signed (took ${signElapsed}s)`);
 
     const signedTx = StellarSdk.TransactionBuilder.fromXDR(
       signedXdr,
@@ -118,7 +104,6 @@ export async function buildAndSubmitTransaction(
     );
 
     // Step 6: Submit transaction (with circuit breaker and retry)
-    console.log('📤 Submitting transaction to network...');
     const result = await measureTiming(
       'transaction.submit',
       () => withRetry(
@@ -128,9 +113,6 @@ export async function buildAndSubmitTransaction(
         { maxAttempts: 3 }
       )
     );
-
-    console.log(`🔗 Transaction hash: ${result.hash}`);
-    console.log(`📊 Initial status: ${result.status}`);
 
     // Check for immediate rejection
     if (result.status === 'ERROR') {
@@ -147,7 +129,6 @@ export async function buildAndSubmitTransaction(
     let confirmation: ConfirmationResult;
 
     if (skipConfirmation) {
-      console.log('⏭️ Skipping confirmation as requested');
       confirmation = {
         status: 'PENDING',
         hash: result.hash,

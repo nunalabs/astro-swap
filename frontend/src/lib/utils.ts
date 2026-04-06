@@ -42,7 +42,6 @@ export function sanitizeLogoURI(uri: string | undefined): string | undefined {
   if (!uri) return undefined;
   if (isValidLogoURI(uri)) return uri;
 
-  console.warn('Invalid logo URI detected and rejected:', uri);
   return undefined;
 }
 
@@ -312,8 +311,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);
     return true;
-  } catch (error) {
-    console.error('Failed to copy to clipboard:', error);
+  } catch {
     return false;
   }
 }

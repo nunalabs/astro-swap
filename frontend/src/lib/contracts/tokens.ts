@@ -5,6 +5,7 @@
 
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { buildAndSubmitTransaction } from '../stellar';
+import { LEDGERS_PER_DAY } from '../constants';
 
 /**
  * Token Contract - Approve spending
@@ -23,18 +24,8 @@ export async function approveToken(
     const latestLedger = await sorobanServer.getLatestLedger();
     const currentLedger = latestLedger.sequence;
 
-    // 7 days expiration (conservative)
     const daysToExpire = 7;
-    const ledgersPerDay = 17280;
-    const expirationLedger = currentLedger + (daysToExpire * ledgersPerDay);
-
-    console.log('Token approval:', {
-      token: tokenAddress,
-      spender,
-      amount,
-      currentLedger,
-      expirationLedger,
-    });
+    const expirationLedger = currentLedger + (daysToExpire * LEDGERS_PER_DAY);
 
     const operation = contract.call(
       'approve',
