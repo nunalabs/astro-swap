@@ -11,7 +11,7 @@ import { getReservesForSwap } from './pair';
 
 /**
  * Calculate amount out using constant product formula
- * Fee is 30 bps (0.3%)
+ * @param feeBps - Fee in basis points (default 30 = 0.3%)
  */
 function calculateAmountOut(
   amountIn: bigint,
@@ -30,15 +30,16 @@ function calculateAmountOut(
 
 /**
  * Get amounts out for a path - OPTIMIZED with batch RPC calls
+ * @param feeBpsPerHop - Optional per-hop fee in bps. Uses real pair fee when provided.
  */
 export async function getAmountsOut(
   amountIn: string,
   path: string[],
-  sourceAddress: string
+  sourceAddress: string,
+  feeBpsPerHop?: number[]
 ): Promise<string[]> {
   try {
     if (path.length < 2) {
-      console.error('Path must have at least 2 tokens');
       return [];
     }
 
@@ -52,7 +53,6 @@ export async function getAmountsOut(
 
     for (let i = 0; i < pairAddresses.length; i++) {
       if (!pairAddresses[i]) {
-        console.error('Pair not found for', path[i], '->', path[i + 1]);
         return [];
       }
     }
@@ -69,26 +69,19 @@ export async function getAmountsOut(
 
     for (let i = 0; i < reservesList.length; i++) {
       if (!reservesList[i]) {
-        console.error('Could not get reserves for hop', i);
         return [];
       }
     }
 
-    // Step 3: Calculate amounts locally
+    // Step 3: Calculate amounts locally using real fees per hop
     const amounts: string[] = [amountIn];
     let currentAmount = BigInt(amountIn);
 
     for (let i = 0; i < path.length - 1; i++) {
       const { reserveIn, reserveOut } = reservesList[i]!;
+      const hopFee = feeBpsPerHop?.[i] != null ? BigInt(feeBpsPerHop[i]) : 30n;
 
-      console.log(`🔄 Swap hop ${i}: ${path[i].slice(0, 8)}... → ${path[i + 1].slice(0, 8)}...`);
-      console.log(`💰 Reserves:`, {
-        reserveIn: reserveIn.toString(),
-        reserveOut: reserveOut.toString(),
-      });
-
-      const amountOut = calculateAmountOut(currentAmount, reserveIn, reserveOut);
-      console.log(`📈 Amount out:`, amountOut.toString());
+      const amountOut = calculateAmountOut(currentAmount, reserveIn, reserveOut, hopFee);
 
       amounts.push(amountOut.toString());
       currentAmount = amountOut;
@@ -96,7 +89,6 @@ export async function getAmountsOut(
 
     return amounts;
   } catch (error) {
-    console.error('Error getting amounts out:', error);
     return [];
   }
 }

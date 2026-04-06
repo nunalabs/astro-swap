@@ -1,12 +1,17 @@
 /**
  * useSwapTransaction Hook
- * Handles swap mutation and transaction tracking
+ *
+ * Handles swap mutation and transaction tracking.
+ * Supports both Soroban AMM (router contract) and Stellar Classic
+ * (path payment) execution based on the SOR venue selection.
  */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useTransactionStore } from '../stores/transactionStore';
 import { swapExactTokensForTokens } from '../lib/contracts';
+import { executeClassicPathPayment } from '../lib/stellar/classic-swap';
+import { SAC_TO_ASSET } from './useHorizonPathQuote';
 import { applySlippage } from '../lib/utils';
 import { formatErrorForToast } from '../lib/errors';
 import { HORIZON_SYNC_DELAY } from '../lib/constants';
@@ -49,17 +54,32 @@ export function useSwapTransaction({
         throw new Error('Missing required parameters');
       }
 
-      const pathAddresses = route.map((t) => t.address);
       const rawAmountIn = quoteData.rawAmountIn;
       const rawAmountOutMin = applySlippage(quoteData.rawAmountOut, slippageTolerance);
-      const deadlineTimestamp = Math.floor(Date.now() / 1000) + deadline * 60;
 
-      console.log('Executing swap:', {
-        rawAmountIn,
-        rawAmountOutMin,
-        path: pathAddresses,
-        deadline: deadlineTimestamp,
-      });
+      // Route through classic Stellar if SOR selected it
+      if (quoteData.venue === 'classic') {
+        const sourceAsset = SAC_TO_ASSET[tokenIn.address];
+        const destAsset = SAC_TO_ASSET[tokenOut.address];
+
+        if (!sourceAsset || !destAsset) {
+          throw new Error('Classic venue selected but token has no SAC mapping');
+        }
+
+        return executeClassicPathPayment(
+          walletAddress,
+          sourceAsset,
+          destAsset,
+          rawAmountIn,
+          rawAmountOutMin,
+          [],
+          tokenIn.decimals
+        );
+      }
+
+      // Default: Soroban AMM via router contract
+      const pathAddresses = route.map((t) => t.address);
+      const deadlineTimestamp = Math.floor(Date.now() / 1000) + deadline * 60;
 
       return swapExactTokensForTokens(
         rawAmountIn,
@@ -95,10 +115,11 @@ export function useSwapTransaction({
         });
       }
 
+      const venueLabel = quoteData?.venue === 'classic' ? ' via Stellar DEX' : '';
       addToast({
         type: 'success',
         title: 'Swap Successful',
-        description: `Swapped ${amountIn} ${tokenIn?.symbol} for ${tokenOut?.symbol}`,
+        description: `Swapped ${amountIn} ${tokenIn?.symbol} for ${tokenOut?.symbol}${venueLabel}`,
       });
 
       setTimeout(() => {
@@ -106,6 +127,7 @@ export function useSwapTransaction({
         queryClient.invalidateQueries({ queryKey: ['allTokenBalances'] });
         queryClient.invalidateQueries({ queryKey: ['pools', walletAddress] });
         queryClient.invalidateQueries({ queryKey: ['swap-quote'] });
+        queryClient.invalidateQueries({ queryKey: ['poolGraph'] });
       }, HORIZON_SYNC_DELAY);
 
       onSuccess?.();

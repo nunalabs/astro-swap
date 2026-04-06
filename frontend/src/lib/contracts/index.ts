@@ -49,4 +49,9 @@ export {
 export { approveToken } from './tokens';
 
 // Path functions
-export { calculateOptimalPath } from './path';
+export { calculateOptimalPath, findBestRoute, findAllRoutes, estimateSplit } from './path';
+export type { BestRoute, RouteHop, SplitEstimate } from './path';
+
+// Smart Order Router
+export { selectBestVenue } from './sor';
+export type { SwapVenue, SORResult } from './sor';
